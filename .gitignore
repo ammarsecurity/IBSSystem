@@ -1,0 +1,40 @@
+# .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.dbmdl
+*.jfm
+project.lock.json
+artifacts/
+
+# Secrets / local config
+appsettings.json
+appsettings.*.json
+!appsettings.Example.json
+mobile/.env
+**/secrets.json
+**/appsettings.Local.json
+
+# Node / Vue / Capacitor
+mobile/node_modules/
+mobile/dist/
+mobile/.vite/
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/local.properties
+mobile/android/captures/
+mobile/ios/App/Pods/
+mobile/ios/App/build/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+*.log

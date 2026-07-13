@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="16" fill="#04111d"/>
+  <rect x="12" y="12" width="40" height="40" rx="12" fill="url(#g)"/>
+  <text x="32" y="39" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#04111d">IBS</text>
+  <defs>
+    <linearGradient id="g" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1fd6aa"/>
+      <stop offset="1" stop-color="#0e8f72"/>
+    </linearGradient>
+  </defs>
+</svg>

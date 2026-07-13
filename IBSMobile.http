@@ -1,0 +1,6 @@
+@IBSMobile_HostAddress = http://localhost:5026
+
+GET {{IBSMobile_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
