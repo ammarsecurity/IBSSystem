@@ -83,7 +83,29 @@ public class SubscriberController : ControllerBase
         CancellationToken cancellationToken)
     {
         var userId = GetAuthenticatedUserId();
-        var result = await _subscriberService.CreatePaymentAsync(userId, dto.Amount, dto.ReturnUrl);
+        var result = await _subscriberService.CreatePaymentAsync(
+            userId,
+            dto.Amount,
+            dto.ProfileId,
+            dto.SaleType,
+            string.IsNullOrWhiteSpace(dto.Purpose) && (dto.ProfileId is null or <= 0)
+                ? "Debt"
+                : dto.Purpose,
+            dto.ReturnUrl);
+        return result.error ? BadRequest(result) : Ok(result);
+    }
+
+    [HttpPost("payment/confirm")]
+    public async Task<ActionResult<Response>> ConfirmPaymentAsync(
+        [FromBody] DtoConfirmPaymentRequest dto,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetAuthenticatedUserId();
+        var result = await _subscriberService.ConfirmPaymentAsync(
+            userId,
+            dto.PaymentId,
+            dto.RequestId,
+            dto.Status);
         return result.error ? BadRequest(result) : Ok(result);
     }
 

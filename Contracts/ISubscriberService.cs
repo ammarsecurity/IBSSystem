@@ -13,5 +13,12 @@ public interface ISubscriberService
     Task<List<DtoActivation>> GetInvoicesAsync(int userId);
     Task<List<DtoReceivable>> GetReceivableAsync(int userId);
     Task<Response> PayBackAmountAsync(int userId);
-    Task<Response> CreatePaymentAsync(int subscriberId, decimal amount, string? returnUrl = null);
+    Task<Response> CreatePaymentAsync(
+        int subscriberId,
+        decimal amount,
+        int? profileId = null,
+        bool saleType = true,
+        string? purpose = null,
+        string? returnUrl = null);
+    Task<Response> ConfirmPaymentAsync(int subscriberId, string qiPaymentId, string? requestId = null, string? statusHint = null);
 }

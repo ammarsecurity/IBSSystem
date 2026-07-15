@@ -3,7 +3,7 @@
     <header class="top rise">
       <div>
         <p class="hello">مرحباً</p>
-        <h1>{{ auth.fullName || 'المشترك' }}</h1>
+        <h1>{{ subscription?.displayName || auth.fullName || 'المشترك' }}</h1>
       </div>
       <button class="avatar" type="button" @click="$router.push('/more')" :aria-label="auth.mobile">
         {{ initials }}
@@ -27,8 +27,13 @@
           </span>
         </div>
         <div class="balance-actions">
-          <button class="btn btn-primary" type="button" @click="$router.push('/payment')">
-            ادفع الآن
+          <button
+            class="btn btn-primary"
+            type="button"
+            :disabled="Number(due) <= 0"
+            @click="$router.push('/payment')"
+          >
+            سدّد الدين
           </button>
           <button class="btn btn-ghost" type="button" @click="$router.push('/refill')">
             تجديد الاشتراك
@@ -55,33 +60,72 @@
       <section class="info surface rise" style="animation-delay: 0.16s">
         <div class="info-head">
           <h2>حالة الاشتراك</h2>
-          <button class="link" type="button" @click="refresh">تحديث</button>
+          <div class="head-actions">
+            <button class="link" type="button" @click="refresh">تحديث</button>
+            <button class="link strong" type="button" @click="$router.push('/subscription')">
+              التفاصيل
+            </button>
+          </div>
         </div>
 
         <div v-if="store.error" class="alert alert-error">{{ store.error }}</div>
 
         <div v-else class="info-grid">
           <div class="info-item">
-            <span>الحساب</span>
+            <span>الاسم</span>
+            <strong>{{ subscription?.displayName || auth.fullName || '—' }}</strong>
+          </div>
+          <div class="info-item">
+            <span>المستخدم</span>
+            <strong>{{ subscription?.userId || '—' }}</strong>
+          </div>
+          <div class="info-item">
+            <span>الباقة</span>
             <strong>{{ subscription?.accountName || '—' }}</strong>
           </div>
           <div class="info-item">
-            <span>الحالة</span>
-            <strong :class="statusClass">{{ subscription?.accountStatus || subscription?.onlineStatus || '—' }}</strong>
+            <span>حالة الحساب</span>
+            <strong :class="statusClass">{{ accountStatusAr }}</strong>
+          </div>
+          <div class="info-item">
+            <span>الاتصال</span>
+            <strong :class="onlineClass">{{ onlineStatusAr }}</strong>
+          </div>
+          <div class="info-item">
+            <span>يمكن التجديد</span>
+            <strong :class="subscription?.canRefill ? 'ok' : 'bad'">
+              {{ subscription?.canRefill ? 'نعم' : 'لا' }}
+            </strong>
           </div>
           <div class="info-item">
             <span>آخر تجديد</span>
-            <strong>{{ subscription?.lastRefill || formatDate(store.financial?.lastActivation) }}</strong>
+            <strong>{{ formatWhen(subscription?.lastRefill) || formatDate(store.financial?.lastActivation) }}</strong>
           </div>
           <div class="info-item">
             <span>الانتهاء</span>
-            <strong>{{ subscription?.manualExpirationDate || '—' }}</strong>
+            <strong>{{ formatWhen(subscription?.manualExpirationDate) }}</strong>
           </div>
           <div class="info-item wide">
-            <span>الوكيل</span>
-            <strong>{{ subscription?.agentName || subscription?.affiliateName || '—' }}</strong>
+            <span>الوكيل / الشبكة</span>
+            <strong>
+              {{ subscription?.agentName || '—' }}
+              <template v-if="subscription?.affiliateName"> · {{ subscription.affiliateName }}</template>
+            </strong>
+          </div>
+          <div class="info-item wide" v-if="subscription?.customer?.customerFullName">
+            <span>العميل</span>
+            <strong>
+              {{ subscription.customer.customerFullName }}
+              <template v-if="subscription.customer.customerPhoneNumber">
+                · {{ subscription.customer.customerPhoneNumber }}
+              </template>
+            </strong>
           </div>
         </div>
+
+        <button class="details-btn" type="button" @click="$router.push('/subscription')">
+          عرض كل التفاصيل
+        </button>
       </section>
     </template>
   </div>
@@ -100,14 +144,44 @@ const due = computed(() => store.amountDue ?? store.financial?.amountDue ?? 0)
 const subscription = computed(() => store.subscription || {})
 
 const initials = computed(() => {
-  const name = auth.fullName || 'مشترك'
+  const name = subscription.value?.displayName || auth.fullName || 'مشترك'
   return name.trim().slice(0, 1)
 })
 
+function formatWhen(raw) {
+  if (!raw) return '—'
+  return String(raw).replace(/\bAM\b/i, 'ص').replace(/\bPM\b/i, 'م')
+}
+
+function mapAccountStatus(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'active') return 'فعّال'
+  if (s === 'disabled' || s === 'disable') return 'موقوف'
+  if (s.includes('expir')) return 'منتهٍ'
+  return status || '—'
+}
+
+function mapOnlineStatus(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'online') return 'متصل'
+  if (s === 'offline') return 'غير متصل'
+  return status || '—'
+}
+
+const accountStatusAr = computed(() => mapAccountStatus(subscription.value?.accountStatus))
+const onlineStatusAr = computed(() => mapOnlineStatus(subscription.value?.onlineStatus))
+
 const statusClass = computed(() => {
-  const status = String(subscription.value?.accountStatus || subscription.value?.onlineStatus || '')
-  if (/active|online|فعال|متصل/i.test(status)) return 'ok'
+  const status = String(subscription.value?.accountStatus || '')
+  if (/active|فعال/i.test(status)) return 'ok'
   if (/expire|disable|منته|موقوف/i.test(status)) return 'bad'
+  return ''
+})
+
+const onlineClass = computed(() => {
+  const status = String(subscription.value?.onlineStatus || '')
+  if (/online|متصل/i.test(status)) return 'ok'
+  if (/offline|غير/i.test(status)) return 'bad'
   return ''
 })
 
@@ -120,11 +194,11 @@ const quickActions = [
     icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M7 3.5h10A1.5 1.5 0 0 1 18.5 5v14l-3-1.5-3 1.5-3-1.5-3 1.5V5A1.5 1.5 0 0 1 7 3.5Z" stroke="#0e8f72" stroke-width="1.8"/></svg>`,
   },
   {
-    to: '/receivables',
-    title: 'المقبوضات',
-    desc: 'سجل الدفعات',
-    tone: 'rgba(224,122,61,0.14)',
-    icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M12 3v18M7 8h7.5a2.5 2.5 0 0 1 0 5H9.5a2.5 2.5 0 0 0 0 5H17" stroke="#e07a3d" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    to: '/subscription',
+    title: 'الاشتراك',
+    desc: 'تفاصيل الحساب',
+    tone: 'rgba(49, 110, 180, 0.14)',
+    icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><circle cx="12" cy="8" r="3.2" stroke="#2f6fb5" stroke-width="1.8"/><path d="M5.5 18.2c1.6-2.8 4-4.2 6.5-4.2s4.9 1.4 6.5 4.2" stroke="#2f6fb5" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   },
 ]
 
@@ -267,11 +341,17 @@ onMounted(refresh)
   align-items: center;
   justify-content: space-between;
   margin-bottom: 14px;
+  gap: 10px;
 }
 
 .info-head h2 {
   margin: 0;
   font-size: 1.05rem;
+}
+
+.head-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .link {
@@ -280,6 +360,11 @@ onMounted(refresh)
   color: var(--accent-deep);
   font-weight: 700;
   cursor: pointer;
+}
+
+.link.strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .info-grid {
@@ -317,6 +402,18 @@ onMounted(refresh)
 
 .info-item .bad {
   color: var(--danger);
+}
+
+.details-btn {
+  margin-top: 14px;
+  width: 100%;
+  border: 1px dashed rgba(11, 26, 40, 0.18);
+  background: transparent;
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--accent-deep);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .hero-skel {

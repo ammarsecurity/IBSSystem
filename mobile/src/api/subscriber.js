@@ -35,3 +35,7 @@ export function payback() {
 export function createPayment(payload) {
   return api.post('/api/Subscriber/payment', payload)
 }
+
+export function confirmPayment(payload) {
+  return api.post('/api/Subscriber/payment/confirm', payload)
+}

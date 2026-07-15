@@ -16,6 +16,10 @@
     </section>
 
     <section class="menu surface rise" style="animation-delay: 0.05s">
+      <RouterLink class="row" to="/subscription">
+        <span>تفاصيل الاشتراك</span>
+        <span class="chev">‹</span>
+      </RouterLink>
       <RouterLink class="row" to="/receivables">
         <span>المقبوضات</span>
         <span class="chev">‹</span>
@@ -29,7 +33,7 @@
         <span class="chev">‹</span>
       </RouterLink>
       <RouterLink class="row" to="/payment">
-        <span>الدفع الإلكتروني</span>
+        <span>تسديد الديون</span>
         <span class="chev">‹</span>
       </RouterLink>
     </section>

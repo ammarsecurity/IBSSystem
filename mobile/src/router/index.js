@@ -34,9 +34,19 @@ const routes = [
         component: () => import('../views/RefillView.vue'),
       },
       {
+        path: 'subscription',
+        name: 'subscription',
+        component: () => import('../views/SubscriptionDetailsView.vue'),
+      },
+      {
         path: 'payment',
         name: 'payment',
         component: () => import('../views/PaymentView.vue'),
+      },
+      {
+        path: 'payment/notification',
+        name: 'payment-notification',
+        component: () => import('../views/PaymentNotificationView.vue'),
       },
       {
         path: 'more',

@@ -22,6 +22,9 @@ public class SubscriberService : ISubscriberService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _qiBaseUri;
     private readonly string _qiSucceedRedirect;
+    private readonly string _qiCreatePath;
+    private readonly string _qiStatusPath;
+    private readonly string _qiToken;
 
     private int? _cachedUserAppUserId;
     private int? _cachedCashAccountId;
@@ -36,7 +39,41 @@ public class SubscriberService : ISubscriberService
         _function = function;
         _httpClientFactory = httpClientFactory;
         _qiBaseUri = configuration["QiCard:BaseUri"] ?? "";
-        _qiSucceedRedirect = configuration["QiCard:FinishPaymentUrl"] ?? "";
+        _qiSucceedRedirect = ResolveQiReturnUrl(
+            configuration["QiCard:returnUrl"],
+            configuration["QiCard:FinishPaymentUrl"]);
+        _qiCreatePath = configuration["QiCard:CreatePath"] ?? "/api/Payment/CreateTest";
+        _qiStatusPath = configuration["QiCard:StatusPath"] ?? "/api/Payment/StatusTest";
+        _qiToken = configuration["QiCard:Token"] ?? "ccd589cc-fd7c-4597-86d4-8a8b62b0573b";
+    }
+
+    /// <summary>
+    /// Prefer QiCard:returnUrl from appsettings. Accepts host (localhost:5173) or full URL.
+    /// </summary>
+    private static string ResolveQiReturnUrl(string? returnUrl, string? finishPaymentUrl)
+    {
+        var raw = !string.IsNullOrWhiteSpace(returnUrl)
+            ? returnUrl.Trim()
+            : (finishPaymentUrl ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return "http://localhost:5173/payment/notification";
+
+        if (!raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            raw = "http://" + raw.TrimStart('/');
+        }
+
+        if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+        {
+            if (string.IsNullOrEmpty(uri.AbsolutePath) || uri.AbsolutePath == "/")
+                return $"{uri.Scheme}://{uri.Authority}/payment/notification";
+
+            return raw.TrimEnd('/');
+        }
+
+        return raw.TrimEnd('/');
     }
 
     private static string NormalizeAffiliateType(string? affiliateType) =>
@@ -244,20 +281,19 @@ public class SubscriberService : ISubscriberService
         if (NormalizeAffiliateType(affiliateType) == AffiliateFtth)
             return _function.ErrorResponse("لا يمكنك تفعيل اشتراكك الآن. يرجى المحاولة لاحقاً");
 
-        return _function.SuccessResponse("تم التفعيل بنجاح");
+        var subscriber = await LoadSubscriberWithAffiliatesAsync(userId);
+        if (subscriber == null)
+            return _function.ErrorResponse("اسم المستخدم غير صحيح");
 
-        // لا تغير شي بالجوه عوفه هيج
-        //var conStr = await GetEncryptedConnectionStringAsync();
-        //var userDiscountAmount = await discountTask;
-
-        //return await ExecuteRefillAsync(
-        //    subscriber,
-        //    profile,
-        //    userDiscountAmount,
-        //    saleType,
-        //    cashId,
-        //    userAppUserId,
-        //    conStr);
+        var conStr = await GetEncryptedConnectionStringAsync();
+        return await ExecuteRefillAsync(
+            subscriber,
+            profile,
+            userDiscount,
+            saleType,
+            cashId,
+            userAppUserId,
+            conStr);
     }
 
     public async Task<decimal> GetAmountDue(int userId) =>
@@ -339,10 +375,23 @@ public class SubscriberService : ISubscriberService
         return _function.SuccessResponse("تم تسديد المبلغ. المبلغ المطلوب صفر");
     }
 
-    public async Task<Response> CreatePaymentAsync(int subscriberId, decimal amount, string? returnUrl = null)
+    public async Task<Response> CreatePaymentAsync(
+        int subscriberId,
+        decimal amount,
+        int? profileId = null,
+        bool saleType = true,
+        string? purpose = null,
+        string? returnUrl = null)
     {
         if (amount <= 0)
             return _function.ErrorResponse("المبلغ غير صالح");
+
+        // Prefer explicit purpose; otherwise infer Debt when no package is selected.
+        var normalizedPurpose =
+            string.Equals(purpose, "Debt", StringComparison.OrdinalIgnoreCase) ||
+            (string.IsNullOrWhiteSpace(purpose) && (profileId is null or <= 0))
+                ? "Debt"
+                : "Refill";
 
         var subscriber = await _context.Subscribers
             .AsNoTracking()
@@ -351,7 +400,27 @@ public class SubscriberService : ISubscriberService
         if (subscriber == null)
             return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
 
-        var requestId = Guid.NewGuid().ToString();
+        if (normalizedPurpose == "Debt")
+        {
+            var amountDue = await GetAmountDue(subscriberId);
+            if (amountDue <= 0)
+                return _function.ErrorResponse("لا يوجد مبلغ دين مستحق للدفع");
+        }
+
+        if (normalizedPurpose == "Refill")
+        {
+            if (profileId is null or <= 0)
+                return _function.ErrorResponse("يجب اختيار الباقة");
+
+            var profile = await _context.Profiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Id == profileId && m.Account_Active);
+
+            if (profile == null)
+                return _function.ErrorResponse("نوع الاشتراك غير صحيح");
+        }
+
+        var requestId = Guid.NewGuid().ToString("N");
         var payment = new Payment
         {
             SubscriberId = subscriberId,
@@ -360,17 +429,20 @@ public class SubscriberService : ISubscriberService
             Status = PaymentStatus.Pending,
             Type = PaymentType.OneTime,
             RequestId = requestId,
-            Purpose = "PayBack",
+            Purpose = normalizedPurpose,
+            ProfileId = normalizedPurpose == "Refill" ? profileId : null,
+            SaleType = saleType,
+            RefillExecuted = false,
             CreatedAt = DateTime.Now
         };
 
         await _context.Payments.AddAsync(payment);
         await _context.SaveChangesAsync();
 
-        var callbackUrl = string.IsNullOrWhiteSpace(returnUrl) ? _qiSucceedRedirect : returnUrl.Trim();
+        var callbackUrl = _qiSucceedRedirect;
         var body = new DtoCreatePaymentObject
         {
-            token = "ccd589cc-fd7c-4597-86d4-8a8b62b0573b",
+            token = _qiToken,
             amount = amount,
             AppId = "IBS-MOBILE",
             currency = "IQD",
@@ -390,6 +462,7 @@ public class SubscriberService : ISubscriberService
         payment.PaymentId = qiPayment!.qiPaymentId;
         if (!string.IsNullOrWhiteSpace(qiPayment.requestId))
             payment.RequestId = qiPayment.requestId;
+        payment.ModifiedAt = DateTime.Now;
 
         await _context.SaveChangesAsync();
 
@@ -400,8 +473,298 @@ public class SubscriberService : ISubscriberService
             QiPaymentId = qiPayment.qiPaymentId,
             RequestId = payment.RequestId,
             Amount = amount,
-            Currency = "IQD"
+            Currency = "IQD",
+            ProfileId = payment.ProfileId,
+            Purpose = payment.Purpose
         });
+    }
+
+    public async Task<Response> ConfirmPaymentAsync(
+        int subscriberId,
+        string qiPaymentId,
+        string? requestId = null,
+        string? statusHint = null)
+    {
+        if (string.IsNullOrWhiteSpace(qiPaymentId))
+            return _function.ErrorResponse("معرف الدفع غير صالح");
+
+        var payment = await _context.Payments
+            .FirstOrDefaultAsync(p =>
+                p.SubscriberId == subscriberId &&
+                (p.PaymentId == qiPaymentId || (!string.IsNullOrWhiteSpace(requestId) && p.RequestId == requestId)));
+
+        if (payment == null)
+            return _function.ErrorResponse("عملية الدفع غير موجودة");
+
+        var isDebt = string.Equals(payment.Purpose, "Debt", StringComparison.OrdinalIgnoreCase);
+
+        if (payment.Status == PaymentStatus.Succeeded && payment.RefillExecuted)
+        {
+            return _function.SuccessResponse(new
+            {
+                Message = isDebt
+                    ? "تم تأكيد دفع الدين مسبقاً"
+                    : "تم تأكيد الدفع وتجديد الاشتراك مسبقاً",
+                Purpose = payment.Purpose ?? "Refill"
+            });
+        }
+
+        var (statusData, statusError) = await CallQiPaymentStatusAsync(qiPaymentId);
+        if (statusError != null)
+            return _function.ErrorResponse(statusError);
+
+        var qiStatus = statusData!.status?.Trim().ToUpperInvariant() ?? "";
+        var canceled = statusData.canceled;
+
+        if (canceled || qiStatus is "FAILED" or "CANCELED" or "CANCELLED")
+        {
+            payment.Status = canceled || qiStatus.Contains("CANCEL") ? PaymentStatus.Canceled : PaymentStatus.Failed;
+            payment.FailureReason = statusData.status ?? statusHint ?? "فشل الدفع";
+            payment.PaymentMethod = statusData.paymentType;
+            payment.ModifiedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return _function.ErrorResponse(payment.FailureReason);
+        }
+
+        if (qiStatus != "SUCCESS")
+        {
+            payment.Status = PaymentStatus.Processing;
+            payment.ModifiedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return _function.ErrorResponse($"الدفع لم يكتمل بعد. الحالة: {statusData.status}");
+        }
+
+        payment.Status = PaymentStatus.Succeeded;
+        payment.PaidAt = DateTime.Now;
+        payment.PaymentMethod = statusData.paymentType;
+        payment.IsReceivedFromUfeq = true;
+        payment.ReceivingDate = DateTime.Now;
+        payment.ModifiedAt = DateTime.Now;
+        if (!string.IsNullOrWhiteSpace(statusData.requestId))
+            payment.RequestId = statusData.requestId;
+        await _context.SaveChangesAsync();
+
+        if (payment.RefillExecuted)
+        {
+            return _function.SuccessResponse(new
+            {
+                Message = isDebt
+                    ? "تم دفع الدين بنجاح مسبقاً"
+                    : "تم الدفع بنجاح وتم تجديد الاشتراك مسبقاً",
+                Purpose = payment.Purpose ?? "Refill"
+            });
+        }
+
+        if (isDebt)
+        {
+            var debtResult = await ExecutePaidDebtAsync(subscriberId, payment.Amount);
+            if (debtResult.error)
+            {
+                payment.FailureReason = debtResult.message ?? "فشل تسجيل تسديد الدين بعد الدفع";
+                payment.ModifiedAt = DateTime.Now;
+                await _context.SaveChangesAsync();
+                return debtResult;
+            }
+
+            payment.RefillExecuted = true;
+            payment.FailureReason = null;
+            payment.ModifiedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+
+            return _function.SuccessResponse(new
+            {
+                Message = debtResult.message
+                    ?? ExtractResponseText(debtResult)
+                    ?? "تم دفع الدين بنجاح",
+                Purpose = "Debt"
+            });
+        }
+
+        if (payment.ProfileId is null or <= 0)
+            return _function.ErrorResponse("تم الدفع لكن الباقة غير مرتبطة بعملية الدفع");
+
+        var refillResult = await ExecutePaidRefillAsync(subscriberId, payment.ProfileId.Value, payment.SaleType);
+        if (refillResult.error)
+        {
+            payment.FailureReason = refillResult.message ?? "فشل التجديد بعد الدفع";
+            payment.ModifiedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return refillResult;
+        }
+
+        payment.RefillExecuted = true;
+        payment.FailureReason = null;
+        payment.ModifiedAt = DateTime.Now;
+        await _context.SaveChangesAsync();
+
+        return _function.SuccessResponse(new
+        {
+            Message = LocalizeAffiliateMessage(
+                ExtractResponseText(refillResult) ?? "تم الدفع وتجديد الاشتراك بنجاح"),
+            Purpose = "Refill"
+        });
+    }
+
+    private async Task<Response> ExecutePaidDebtAsync(int userId, decimal paidAmount)
+    {
+        if (paidAmount <= 0)
+            return _function.ErrorResponse("مبلغ الدين المدفوع غير صالح");
+
+        var cashId = await GetUserAppCashAccountIdAsync();
+        if (cashId == 0)
+            return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
+
+        var userAppUserId = await GetUserAppUserIdAsync();
+
+        var subsc = await _context.Subscribers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.IsValid && m.Id == userId);
+
+        if (subsc == null)
+            return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
+
+        var cashAccount = await _context.Chart_Accounts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Ch_Id == cashId);
+
+        if (cashAccount == null)
+            return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
+
+        var emp = await _context.User
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == userAppUserId);
+
+        if (emp == null)
+            return _function.ErrorResponse("حساب الموظف غير محدد. يجب الاتصال بالوكيل");
+
+        var receivable = new Receivable
+        {
+            Rec_Date = DateTime.Now,
+            Rec_Amount = paidAmount,
+            FK_Receivables_Rec_SubscId = subsc,
+            FK_Receivables_Rec_Cash_Account = cashAccount,
+            FK_Receivables_Rec_empid = emp,
+            Rec_Note = "تم الاستلام إلكترونياً من التطبيق"
+        };
+
+        await _context.Receivables.AddAsync(receivable);
+        await _context.SaveChangesAsync();
+
+        return _function.SuccessResponse($"تم تسديد مبلغ {paidAmount:N0} دينار بنجاح");
+    }
+
+    private static string? ExtractResponseText(Response result)
+    {
+        if (!string.IsNullOrWhiteSpace(result.message))
+            return result.message;
+
+        return result.data switch
+        {
+            string s when !string.IsNullOrWhiteSpace(s) => s,
+            _ => null
+        };
+    }
+
+    private static string LocalizeAffiliateMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "تم الدفع وتجديد الاشتراك بنجاح";
+
+        // Earthlink/SAS English success: "... next user expiration date is 16/08/2026 01:13 AM"
+        var expirationMatch = System.Text.RegularExpressions.Regex.Match(
+            message,
+            @"expiration date is\s+(.+)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (message.Contains("payment was accepted", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("account has been updated", StringComparison.OrdinalIgnoreCase))
+        {
+            var datePart = expirationMatch.Success
+                ? expirationMatch.Groups[1].Value.Trim().Replace(" AM", " ص").Replace(" PM", " م")
+                : null;
+
+            return string.IsNullOrWhiteSpace(datePart)
+                ? "تم قبول الدفع وتحديث حسابك بنجاح"
+                : $"تم قبول الدفع وتحديث حسابك بنجاح. تاريخ انتهاء الاشتراك القادم: {datePart}";
+        }
+
+        return message;
+    }
+
+    private async Task<Response> ExecutePaidRefillAsync(int userId, int profileId, bool saleType)
+    {
+        var userAppUserId = await GetUserAppUserIdAsync();
+        var cashId = await GetUserAppCashAccountIdAsync();
+        if (cashId == 0)
+            return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل لغرض تحديد الحساب النقدي");
+
+        var profile = await _context.Profiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == profileId);
+
+        if (profile == null)
+            return _function.ErrorResponse("نوع الاشتراك غير صحيح");
+
+        var userDiscount = await _context.SubscriberDiscounts
+            .AsNoTracking()
+            .Where(m => m.SubscId == userId)
+            .Select(i => i.Amount)
+            .FirstOrDefaultAsync();
+
+        var subscriber = await LoadSubscriberWithAffiliatesAsync(userId);
+        if (subscriber == null)
+            return _function.ErrorResponse("اسم المستخدم غير صحيح");
+
+        if (NormalizeAffiliateType(subscriber.FK_Subscribers_MainAffiliate.AffiliateType) == AffiliateFtth)
+            return _function.ErrorResponse("لا يمكنك تفعيل اشتراكك الآن. يرجى المحاولة لاحقاً");
+
+        var conStr = await GetEncryptedConnectionStringAsync();
+        return await ExecuteRefillAsync(
+            subscriber,
+            profile,
+            userDiscount,
+            saleType,
+            cashId,
+            userAppUserId,
+            conStr);
+    }
+
+    private async Task<Subscriber?> LoadSubscriberWithAffiliatesAsync(int userId)
+    {
+        var keys = await _context.Subscribers
+            .AsNoTracking()
+            .Where(s => s.Id == userId)
+            .Select(s => new
+            {
+                MainId = EF.Property<int>(s, "MainAffiliate"),
+                SubId = EF.Property<int>(s, "SubAffiliate"),
+            })
+            .FirstOrDefaultAsync();
+
+        if (keys == null)
+            return null;
+
+        var subscriber = await _context.Subscribers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == userId);
+
+        if (subscriber == null)
+            return null;
+
+        var main = await _context.MainAffiliates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == keys.MainId);
+
+        var sub = await _context.SubAffiliates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == keys.SubId);
+
+        if (main == null || sub == null)
+            return null;
+
+        subscriber.FK_Subscribers_MainAffiliate = main;
+        subscriber.FK_Subscribers_SubAffiliate = sub;
+        return subscriber;
     }
 
     private async Task<Response?> FetchAffiliateUserDataAsync(Subscriber subscriber)
@@ -533,8 +896,9 @@ public class SubscriberService : ISubscriberService
         if (string.IsNullOrWhiteSpace(_qiBaseUri))
             return (null, "إعدادات الدفع الإلكتروني غير صحيحة");
 
+        var path = _qiCreatePath.StartsWith('/') ? _qiCreatePath : "/" + _qiCreatePath;
         using var httpClient = _httpClientFactory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_qiBaseUri.TrimEnd('/')}/api/Payment/Create");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_qiBaseUri.TrimEnd('/')}{path}");
         request.Content = new StringContent(
             JsonConvert.SerializeObject(body),
             Encoding.UTF8,
@@ -554,5 +918,32 @@ public class SubscriberService : ISubscriberService
             return (null, "فشل إنشاء نموذج الدفع من QiCard");
 
         return (qiPayment!.data, null);
+    }
+
+    private async Task<(DtoPaymentResponseStatus? status, string? errorMessage)> CallQiPaymentStatusAsync(string qiPaymentId)
+    {
+        if (string.IsNullOrWhiteSpace(_qiBaseUri))
+            return (null, "إعدادات الدفع الإلكتروني غير صحيحة");
+
+        var path = _qiStatusPath.StartsWith('/') ? _qiStatusPath : "/" + _qiStatusPath;
+        using var httpClient = _httpClientFactory.CreateClient();
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"{_qiBaseUri.TrimEnd('/')}{path.TrimEnd('/')}/{Uri.EscapeDataString(qiPaymentId)}");
+
+        var response = await httpClient.SendAsync(request);
+        var responseContent = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            return (null, $"خطأ في التحقق من حالة الدفع: {responseContent}");
+
+        var parsed = JsonConvert.DeserializeObject<DtoStatusResponse>(responseContent);
+        if (parsed?.error == true)
+            return (null, parsed.message ?? "فشل التحقق من حالة الدفع");
+
+        if (parsed?.data == null)
+            return (null, "لم يتم العثور على بيانات حالة الدفع");
+
+        return (parsed.data, null);
     }
 }

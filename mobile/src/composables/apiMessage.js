@@ -17,9 +17,26 @@ export function getApiMessage(payload, fallback = '') {
     return text
   }
 
+  if (data && typeof data === 'object') {
+    const nested =
+      data.message ||
+      data.Message ||
+      data.msg ||
+      null
+    if (typeof nested === 'string' && nested.trim()) return nested.trim()
+  }
+
   if (typeof payload.error === 'string' && payload.error.trim()) return payload.error.trim()
 
   return fallback
+}
+
+export function getApiPurpose(payload) {
+  const data = payload?.data
+  if (data && typeof data === 'object') {
+    return data.purpose || data.Purpose || null
+  }
+  return null
 }
 
 export function isApiError(payload) {

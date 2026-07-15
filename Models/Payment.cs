@@ -57,6 +57,12 @@ namespace IBSMobile.Models
         [MaxLength(100)]
         public string? Purpose { get; set; }
 
+        public int? ProfileId { get; set; }
+
+        public bool SaleType { get; set; } = true;
+
+        public bool RefillExecuted { get; set; }
+
         public DateTime? PaidAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? ModifiedAt { get; set; }

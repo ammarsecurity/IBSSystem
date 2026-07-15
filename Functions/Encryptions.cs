@@ -31,21 +31,61 @@ namespace IBSMobile.Functions
 
         public static async Task<string> EncryptDatabase(string plainText)
         {
-            string connectionString = "";
-            int index = plainText.IndexOf("Database");
-            plainText = plainText.Substring(index);
-            index = plainText.IndexOf("Trusted");
-            plainText = plainText.Substring(0, index - 1);
-            connectionString = plainText;
+            if (string.IsNullOrWhiteSpace(plainText))
+                throw new ArgumentException("سلسلة الاتصال فارغة", nameof(plainText));
 
+            var connectionString = BuildEncryptPayload(plainText);
 
             var options = new RestClientOptions(saturnServer) { Timeout = Timeout.InfiniteTimeSpan };
             var client = new RestClient(options);
-            var request = new RestRequest($"/api/IBS/Encrypt?text={connectionString}", Method.Get);
+            var request = new RestRequest("/api/IBS/Encrypt", Method.Get);
+            request.AddQueryParameter("text", connectionString);
 
             var response = await client.ExecuteAsync(request);
-            string stringResult = response.Content;
+            string stringResult = response.Content ?? string.Empty;
             return stringResult.Replace("\"", "");
+        }
+
+        /// <summary>
+        /// Legacy encrypt API expects: Database=...;User ID=...;Password=...
+        /// (without Server / Trusted_Connection / Encrypt).
+        /// </summary>
+        private static string BuildEncryptPayload(string connectionString)
+        {
+            try
+            {
+                var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
+                var database = builder.InitialCatalog;
+                var userId = builder.UserID;
+                var password = builder.Password;
+
+                if (!string.IsNullOrWhiteSpace(database))
+                    return $"Database={database};User ID={userId};Password={password}";
+            }
+            catch
+            {
+                // Fall through to substring parsing for non-standard strings.
+            }
+
+            var source = connectionString;
+            var dbIndex = source.IndexOf("Database", StringComparison.OrdinalIgnoreCase);
+            if (dbIndex < 0)
+                dbIndex = source.IndexOf("Initial Catalog", StringComparison.OrdinalIgnoreCase);
+            if (dbIndex < 0)
+                throw new ArgumentException("تعذر استخراج اسم قاعدة البيانات من سلسلة الاتصال");
+
+            source = source.Substring(dbIndex);
+
+            var endIndex = source.IndexOf("Trusted", StringComparison.OrdinalIgnoreCase);
+            if (endIndex < 0)
+                endIndex = source.IndexOf("Encrypt", StringComparison.OrdinalIgnoreCase);
+            if (endIndex < 0)
+                endIndex = source.IndexOf("TrustServerCertificate", StringComparison.OrdinalIgnoreCase);
+
+            if (endIndex > 0)
+                source = source.Substring(0, endIndex).TrimEnd(';', ' ');
+
+            return source.TrimEnd(';', ' ');
         }
 
     }

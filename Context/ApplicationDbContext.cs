@@ -63,6 +63,9 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<Subscriber>(entity =>
         {
+            entity.Property<int>("MainAffiliate");
+            entity.Property<int>("SubAffiliate");
+
             entity.HasOne(s => s.FK_Subscribers_MainAffiliate)
                 .WithMany(a => a.Subscribers)
                 .HasForeignKey("MainAffiliate")
@@ -104,7 +107,39 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<SubAffiliate>(entity =>
+        {
+            // DB column is MainAffiliate, not MainAffiliateId (EF convention default).
+            entity.HasOne<MainAffiliate>()
+                .WithMany(m => m.SubAffiliates)
+                .HasForeignKey(s => s.MainAffiliate)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            // DB column TransactionType is nvarchar storing enum numeric values as text ("1").
+            entity.Property(p => p.Type)
+                .HasColumnName("TransactionType")
+                .HasConversion(
+                    v => ((int)v).ToString(),
+                    v => ParsePaymentType(v));
+        });
+
         base.OnModelCreating(modelBuilder);
+    }
+
+    private static PaymentType ParsePaymentType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return PaymentType.OneTime;
+
+        if (Enum.TryParse<PaymentType>(value, true, out var byName))
+            return byName;
+
+        return int.TryParse(value, out var numeric)
+            ? (PaymentType)numeric
+            : PaymentType.OneTime;
     }
 
 }

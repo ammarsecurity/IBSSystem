@@ -86,6 +86,11 @@ export const useSubscriberStore = defineStore('subscriber', () => {
     return data
   }
 
+  async function confirmPayment(payload) {
+    const { data } = await subscriberApi.confirmPayment(payload)
+    return data
+  }
+
   function reset() {
     financial.value = null
     subscription.value = null
@@ -112,6 +117,7 @@ export const useSubscriberStore = defineStore('subscriber', () => {
     refill,
     payback,
     createPayment,
+    confirmPayment,
     reset,
   }
 })

@@ -91,8 +91,8 @@
         >
           <span class="pay-icon cash" v-html="icons.cash" />
           <span class="pay-text">
-            <strong>نقدي</strong>
-            <small>من رصيد الحساب</small>
+            <strong>دفع إلكتروني</strong>
+            <small>بطاقة Qi ثم تفعيل</small>
           </span>
         </button>
         <button
@@ -113,7 +113,7 @@
       </div>
 
     <div v-if="!canCredit" class="hint-line">
-      التفعيل الآجل غير مفعّل لحسابك. يمكنك التجديد نقداً فقط.
+      التفعيل الآجل غير مفعّل لحسابك. يمكنك التجديد عبر الدفع الإلكتروني.
     </div>
   </section>
 
@@ -121,7 +121,7 @@
       <div class="confirm-summary" v-if="selected">
         <span>المحدد</span>
         <strong>{{ selected.name }}</strong>
-        <em class="num">{{ formatMoney(selected.price) }} · {{ form.saleType ? 'نقدي' : 'آجل' }}</em>
+        <em class="num">{{ formatMoney(selected.price) }} · {{ form.saleType ? 'دفع إلكتروني' : 'آجل' }}</em>
       </div>
       <div class="confirm-summary muted" v-else>
         <span>لم تُحدد باقة بعد</span>
@@ -133,7 +133,7 @@
         :disabled="loading || !form.profileId"
         @click="onRefill"
       >
-        {{ loading ? 'جاري التفعيل...' : 'تأكيد التجديد' }}
+        {{ confirmLabel }}
       </button>
     </div>
   </div>
@@ -141,6 +141,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { Capacitor } from '@capacitor/core'
 import { useSubscriberStore } from '../stores/subscriber'
 import { useToastStore } from '../stores/toast'
 import { formatMoney } from '../composables/format'
@@ -174,6 +175,13 @@ const selected = computed(() =>
   visiblePackages.value.find((p) => p.id === form.profileId) || null,
 )
 
+const confirmLabel = computed(() => {
+  if (loading.value) {
+    return form.saleType ? 'جاري فتح الدفع...' : 'جاري التفعيل...'
+  }
+  return form.saleType ? 'ادفع وجدّد' : 'تأكيد التجديد آجلاً'
+})
+
 const icons = {
   cash: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none"><rect x="3" y="6" width="18" height="12" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M7 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   credit: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M12 3v18M8 8h5.2a2.4 2.4 0 0 1 0 4.8H9.2a2.4 2.4 0 0 0 0 4.8H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
@@ -190,43 +198,108 @@ function selectPackage(pkg) {
   form.profileId = pkg.id
 }
 
+async function openPaymentUrl(url) {
+  if (!url) return
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { Browser } = await import('@capacitor/browser')
+      await Browser.open({ url })
+      return
+    } catch {
+      // fallback
+    }
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 async function onRefill() {
   if (!form.profileId) {
     toast.info('اختر باقة أولاً ثم أكّد التجديد', 'تنبيه')
     return
   }
+
   loading.value = true
   try {
-    const data = await store.refill({
-      profileId: Number(form.profileId),
-      saleType: form.saleType,
-    })
-    const text = getApiMessage(
-      data,
-      isApiError(data) ? 'فشل تجديد الاشتراك' : 'تم تجديد الاشتراك بنجاح',
-    )
-    if (isApiError(data)) {
-      toast.error(text, 'فشل التجديد')
+    if (form.saleType) {
+      await startOnlinePayment()
     } else {
-      toast.success(text, 'تم التفعيل')
-      await store.loadDashboard()
+      await startCreditRefill()
     }
   } catch (err) {
     const text = getApiMessage(
       err.response?.data,
-      err.response?.data?.error || 'تعذر تنفيذ عملية التجديد',
+      err.response?.data?.error || 'تعذر تنفيذ العملية',
     )
-    toast.error(text, 'فشل التجديد')
+    toast.error(text, form.saleType ? 'فشل الدفع' : 'فشل التجديد')
   } finally {
     loading.value = false
   }
 }
 
+async function startOnlinePayment() {
+  const pkg = selected.value
+  const amount = Number(pkg?.price)
+  if (!amount || amount <= 0) {
+    toast.error('سعر الباقة غير صالح للدفع الإلكتروني', 'تعذر الدفع')
+    return
+  }
+
+  const data = await store.createPayment({
+    amount,
+    profileId: Number(form.profileId),
+    saleType: true,
+    purpose: 'Refill',
+  })
+
+  if (isApiError(data)) {
+    toast.error(getApiMessage(data, 'فشل إنشاء عملية الدفع'), 'فشل الدفع')
+    return
+  }
+
+  const payload = data?.data ?? data
+  const formUrl =
+    payload?.formUrl ||
+    payload?.FormUrl ||
+    (typeof payload === 'string' && /^https?:\/\//i.test(payload) ? payload : null)
+
+  if (!formUrl) {
+    toast.error('لم يتم استلام رابط الدفع', 'فشل الدفع')
+    return
+  }
+
+  toast.success('أكمل الدفع في الصفحة الجديدة، ثم ستتم إعادة توجيهك للتأكيد', 'جاهز للدفع')
+  await openPaymentUrl(formUrl)
+}
+
+async function startCreditRefill() {
+  const data = await store.refill({
+    profileId: Number(form.profileId),
+    saleType: false,
+  })
+  const text = getApiMessage(
+    data,
+    isApiError(data) ? 'فشل تجديد الاشتراك' : 'تم تجديد الاشتراك بنجاح',
+  )
+  if (isApiError(data)) {
+    toast.error(text, 'فشل التجديد')
+  } else {
+    toast.success(text, 'تم التفعيل')
+    await store.loadDashboard()
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([
-    store.financial && store.subscription ? Promise.resolve() : store.loadDashboard(),
-    store.loadPackages(),
-  ])
+  try {
+    await Promise.all([
+      store.financial && store.subscription ? Promise.resolve() : store.loadDashboard(),
+      store.loadPackages(),
+    ])
+  } catch (err) {
+    toast.error(
+      getApiMessage(err.response?.data, err.response?.data?.error || 'تعذر تحميل صفحة التجديد'),
+      'خطأ',
+    )
+  }
   if (!canCredit.value) form.saleType = true
 })
 </script>
