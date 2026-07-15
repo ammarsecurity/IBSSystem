@@ -20,6 +20,7 @@ export const useAuthStore = defineStore('auth', () => {
   const userId = ref(stored?.userId || null)
   const fullName = ref(stored?.fullName || '')
   const mobile = ref(stored?.mobile || '')
+  const company = ref(stored?.company || '')
   const expiresAt = ref(stored?.expiresAt || null)
   const loading = ref(false)
   const error = ref('')
@@ -36,6 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
         userId: userId.value,
         fullName: fullName.value,
         mobile: mobile.value,
+        company: company.value,
         expiresAt: expiresAt.value,
       }),
     )
@@ -54,6 +56,7 @@ export const useAuthStore = defineStore('auth', () => {
       userId.value = data.userId
       fullName.value = data.fullName || ''
       mobile.value = data.mobile || credentials.mobile
+      company.value = data.company || credentials.company || ''
       expiresAt.value = data.expiresAt
       setAuthToken(data.accessToken)
       persist()
@@ -74,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     userId.value = null
     fullName.value = ''
     mobile.value = ''
+    company.value = ''
     expiresAt.value = null
     clearAuthToken()
     localStorage.removeItem(STORAGE_KEY)
@@ -84,6 +88,7 @@ export const useAuthStore = defineStore('auth', () => {
     userId,
     fullName,
     mobile,
+    company,
     expiresAt,
     loading,
     error,

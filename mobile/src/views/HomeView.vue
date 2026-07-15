@@ -1,9 +1,12 @@
 <template>
   <div class="page home">
     <header class="top rise">
-      <div>
-        <p class="hello">مرحباً</p>
-        <h1>{{ subscription?.displayName || auth.fullName || 'المشترك' }}</h1>
+      <div class="brand-line">
+        <img class="brand-mark" src="/logowithouttext.png" alt="IBS" width="40" height="40" />
+        <div>
+          <p class="hello">مرحباً</p>
+          <h1>{{ subscription?.displayName || auth.fullName || 'المشترك' }}</h1>
+        </div>
       </div>
       <button class="avatar" type="button" @click="$router.push('/more')" :aria-label="auth.mobile">
         {{ initials }}
@@ -190,15 +193,15 @@ const quickActions = [
     to: '/invoices',
     title: 'الفواتير',
     desc: 'سجل التفعيلات',
-    tone: 'rgba(22,184,148,0.14)',
-    icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M7 3.5h10A1.5 1.5 0 0 1 18.5 5v14l-3-1.5-3 1.5-3-1.5-3 1.5V5A1.5 1.5 0 0 1 7 3.5Z" stroke="#0e8f72" stroke-width="1.8"/></svg>`,
+    tone: 'rgba(0,174,239,0.14)',
+    icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M7 3.5h10A1.5 1.5 0 0 1 18.5 5v14l-3-1.5-3 1.5-3-1.5-3 1.5V5A1.5 1.5 0 0 1 7 3.5Z" stroke="#0054a6" stroke-width="1.8"/></svg>`,
   },
   {
     to: '/subscription',
     title: 'الاشتراك',
     desc: 'تفاصيل الحساب',
-    tone: 'rgba(49, 110, 180, 0.14)',
-    icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><circle cx="12" cy="8" r="3.2" stroke="#2f6fb5" stroke-width="1.8"/><path d="M5.5 18.2c1.6-2.8 4-4.2 6.5-4.2s4.9 1.4 6.5 4.2" stroke="#2f6fb5" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    tone: 'rgba(247,148,30,0.14)',
+    icon: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none"><circle cx="12" cy="8" r="3.2" stroke="#d84c27" stroke-width="1.8"/><path d="M5.5 18.2c1.6-2.8 4-4.2 6.5-4.2s4.9 1.4 6.5 4.2" stroke="#d84c27" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   },
 ]
 
@@ -215,6 +218,21 @@ onMounted(refresh)
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.brand-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 8px 16px rgba(0, 174, 239, 0.25));
 }
 
 .hello {
@@ -234,7 +252,7 @@ onMounted(refresh)
   height: 46px;
   border: none;
   border-radius: 16px;
-  background: linear-gradient(145deg, #12324a, #071a2b);
+  background: linear-gradient(145deg, #0054a6, #003366);
   color: #fff;
   font-weight: 800;
   cursor: pointer;
@@ -243,8 +261,9 @@ onMounted(refresh)
 .balance {
   padding: 22px;
   background:
-    radial-gradient(circle at 100% 0%, rgba(22, 184, 148, 0.22), transparent 42%),
-    linear-gradient(160deg, #0a1d2f, #071525 70%);
+    radial-gradient(circle at 100% 0%, rgba(0, 174, 239, 0.28), transparent 42%),
+    radial-gradient(circle at 0% 100%, rgba(247, 148, 30, 0.22), transparent 40%),
+    linear-gradient(160deg, #003366, #001a33 70%);
   color: #fff;
   border: none;
 }
@@ -271,7 +290,7 @@ onMounted(refresh)
 }
 
 .balance-meta .ok {
-  color: #7dffcf;
+  color: #7ddcff;
 }
 
 .balance-meta .no {

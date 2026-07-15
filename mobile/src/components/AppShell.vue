@@ -19,8 +19,8 @@ import BottomNav from './BottomNav.vue'
 .shell {
   min-height: 100dvh;
   background:
-    radial-gradient(circle at 100% 0%, rgba(22, 184, 148, 0.12), transparent 36%),
-    radial-gradient(circle at 0% 20%, rgba(224, 122, 61, 0.08), transparent 30%),
+    radial-gradient(circle at 100% 0%, rgba(0, 174, 239, 0.14), transparent 38%),
+    radial-gradient(circle at 0% 18%, rgba(247, 148, 30, 0.1), transparent 32%),
     var(--bg);
 }
 

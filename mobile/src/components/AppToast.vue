@@ -63,8 +63,8 @@ function iconFor(type) {
 }
 
 .toast.success {
-  border-color: rgba(22, 184, 148, 0.28);
-  background: linear-gradient(135deg, rgba(22, 184, 148, 0.12), rgba(255, 255, 255, 0.96) 42%);
+  border-color: rgba(0, 174, 239, 0.28);
+  background: linear-gradient(135deg, rgba(0, 174, 239, 0.12), rgba(255, 255, 255, 0.96) 42%);
 }
 
 .toast.error {

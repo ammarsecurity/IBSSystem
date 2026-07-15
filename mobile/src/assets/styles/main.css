@@ -1,18 +1,31 @@
 :root {
-  --bg: #e8eef4;
-  --bg-deep: #04111d;
+  /* IBS Internet brand — blue + orange from logo */
+  --brand-blue: #00aeef;
+  --brand-blue-mid: #0054a6;
+  --brand-blue-deep: #003366;
+  --brand-orange: #f7941e;
+  --brand-orange-deep: #d84c27;
+  --brand-gold: #ffd54f;
+
+  --bg: #e9eef6;
+  --bg-deep: #000000;
   --surface: #ffffff;
-  --surface-soft: #f4f7fa;
-  --ink: #0b1a28;
-  --ink-muted: #5b6b7c;
-  --line: rgba(11, 26, 40, 0.08);
-  --accent: #16b894;
-  --accent-deep: #0e8f72;
-  --accent-soft: rgba(22, 184, 148, 0.14);
-  --warn: #e07a3d;
-  --warn-soft: rgba(224, 122, 61, 0.14);
+  --surface-soft: #f3f6fb;
+  --ink: #0a1628;
+  --ink-muted: #5a6b82;
+  --line: rgba(0, 51, 102, 0.1);
+
+  --accent: var(--brand-blue);
+  --accent-deep: var(--brand-blue-mid);
+  --accent-soft: rgba(0, 174, 239, 0.14);
+
+  --warn: var(--brand-orange);
+  --warn-soft: rgba(247, 148, 30, 0.16);
+  --cta: var(--brand-orange);
+  --cta-deep: var(--brand-orange-deep);
+
   --danger: #d64545;
-  --shadow: 0 18px 40px rgba(4, 17, 29, 0.12);
+  --shadow: 0 18px 40px rgba(0, 51, 102, 0.12);
   --radius: 22px;
   --radius-sm: 14px;
   --nav-h: 76px;
@@ -123,9 +136,9 @@ img {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-deep));
   color: #fff;
-  box-shadow: 0 12px 28px rgba(14, 143, 114, 0.28);
+  box-shadow: 0 12px 28px rgba(216, 76, 39, 0.28);
 }
 
 .btn-ghost {
@@ -135,8 +148,8 @@ img {
 }
 
 .btn-warn {
-  background: linear-gradient(135deg, #f09a55, var(--warn));
-  color: #fff;
+  background: linear-gradient(135deg, var(--brand-gold), var(--brand-orange));
+  color: #123;
 }
 
 .field {
@@ -165,7 +178,7 @@ img {
 
 .field input:focus,
 .field select:focus {
-  border-color: rgba(22, 184, 148, 0.55);
+  border-color: rgba(0, 174, 239, 0.55);
   box-shadow: 0 0 0 4px var(--accent-soft);
   background: #fff;
 }
@@ -188,7 +201,7 @@ img {
 }
 
 .alert-info {
-  background: rgba(11, 26, 40, 0.05);
+  background: rgba(0, 51, 102, 0.05);
   color: var(--ink-muted);
 }
 
@@ -206,7 +219,7 @@ img {
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #e7edf3 25%, #f6f9fc 50%, #e7edf3 75%);
+  background: linear-gradient(90deg, #e3eaf3 25%, #f5f8fc 50%, #e3eaf3 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s infinite linear;
   border-radius: 12px;

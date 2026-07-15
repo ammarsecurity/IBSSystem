@@ -317,7 +317,7 @@ onMounted(async () => {
   margin-bottom: 16px;
   color: #fff;
   background:
-    radial-gradient(circle at 100% 0%, rgba(22, 184, 148, 0.35), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(0, 174, 239, 0.35), transparent 42%),
     linear-gradient(155deg, #0a1d2f 0%, #071525 70%);
   box-shadow: var(--shadow);
 }
@@ -466,12 +466,12 @@ onMounted(async () => {
 
 .pkg.featured {
   background:
-    linear-gradient(180deg, rgba(22, 184, 148, 0.06), transparent 40%),
+    linear-gradient(180deg, rgba(0, 174, 239, 0.06), transparent 40%),
     var(--surface);
 }
 
 .pkg.active {
-  border-color: rgba(22, 184, 148, 0.55);
+  border-color: rgba(0, 174, 239, 0.55);
   box-shadow: 0 12px 28px rgba(14, 143, 114, 0.12);
 }
 
@@ -569,7 +569,7 @@ onMounted(async () => {
 }
 
 .pay-opt.active {
-  border-color: rgba(22, 184, 148, 0.5);
+  border-color: rgba(0, 174, 239, 0.5);
   background: var(--accent-soft);
 }
 
@@ -589,7 +589,7 @@ onMounted(async () => {
 }
 
 .pay-icon.cash {
-  background: rgba(22, 184, 148, 0.14);
+  background: rgba(0, 174, 239, 0.14);
   color: var(--accent-deep);
 }
 

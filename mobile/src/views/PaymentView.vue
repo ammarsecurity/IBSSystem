@@ -188,7 +188,7 @@ onMounted(async () => {
   padding: 20px;
   margin-bottom: 14px;
   background:
-    radial-gradient(circle at 0% 0%, rgba(224, 122, 61, 0.18), transparent 45%),
+    radial-gradient(circle at 0% 0%, rgba(247, 148, 30, 0.2), transparent 45%),
     #fff;
   display: grid;
   gap: 8px;

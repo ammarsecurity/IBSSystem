@@ -262,7 +262,7 @@ onMounted(refresh)
   padding: 18px;
   margin-bottom: 12px;
   background:
-    radial-gradient(circle at 100% 0%, rgba(22, 184, 148, 0.16), transparent 40%),
+    radial-gradient(circle at 100% 0%, rgba(0, 174, 239, 0.16), transparent 40%),
     #fff;
 }
 

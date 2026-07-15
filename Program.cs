@@ -4,6 +4,7 @@ using IBSMobile.Contracts;
 using IBSMobile.Data;
 using IBSMobile.Functions;
 using IBSMobile.Services;
+using IBSMobile.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -11,8 +12,17 @@ using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.Configure<TenantDatabaseOptions>(
+    builder.Configuration.GetSection(TenantDatabaseOptions.SectionName));
+
+builder.Services.AddSingleton<ICompanyConnectionResolver, CompanyConnectionResolver>();
+builder.Services.AddScoped<ITenantConnectionAccessor, TenantConnectionAccessor>();
+
+builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
+{
+    var tenant = sp.GetRequiredService<ITenantConnectionAccessor>();
+    options.UseSqlServer(tenant.ConnectionString);
+});
 
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IBSFunctions>();
@@ -96,6 +106,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 app.UseAuthentication();
+app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 

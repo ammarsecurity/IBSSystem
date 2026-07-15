@@ -12,6 +12,7 @@
         public string? fullName { get; set; }
         public string? mobile { get; set; }
         public string? accessToken { get; set; }
+        public string? company { get; set; }
         public bool isSuccess { get; set; }
         public string? error { get; set; }
         public DateTime? issuedAt { get; set; }

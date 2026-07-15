@@ -8,10 +8,11 @@
     </header>
 
     <section class="profile surface rise">
-      <div class="avatar">{{ initials }}</div>
+      <img class="avatar-logo" src="/logowithouttext.png" alt="IBS" width="56" height="56" />
       <div>
         <strong>{{ auth.fullName || 'المشترك' }}</strong>
         <p>{{ auth.mobile || '—' }}</p>
+        <p v-if="auth.company" class="company">الشركة: {{ auth.company }}</p>
       </div>
     </section>
 
@@ -45,7 +46,6 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useSubscriberStore } from '../stores/subscriber'
@@ -53,8 +53,6 @@ import { useSubscriberStore } from '../stores/subscriber'
 const router = useRouter()
 const auth = useAuthStore()
 const subscriber = useSubscriberStore()
-
-const initials = computed(() => (auth.fullName || 'م').trim().slice(0, 1))
 
 function onLogout() {
   auth.logout()
@@ -72,16 +70,12 @@ function onLogout() {
   margin-bottom: 14px;
 }
 
-.avatar {
+.avatar-logo {
   width: 56px;
   height: 56px;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #12324a, #071a2b);
-  color: #fff;
-  font-size: 1.3rem;
-  font-weight: 800;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 8px 16px rgba(0, 174, 239, 0.22));
 }
 
 .profile strong {
@@ -93,6 +87,13 @@ function onLogout() {
   margin: 4px 0 0;
   color: var(--ink-muted);
   font-family: var(--font-num);
+}
+
+.profile .company {
+  font-family: var(--font);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent-deep);
 }
 
 .menu {
