@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">IBS Mobile</string>
-    <string name="title_activity_main">IBS Mobile</string>
-    <string name="package_name">com.ibs.mobile</string>
-    <string name="custom_url_scheme">com.ibs.mobile</string>
+    <string name="app_name">IBS Internet</string>
+    <string name="title_activity_main">IBS Internet</string>
+    <string name="package_name">com.ibs.internet</string>
+    <string name="custom_url_scheme">com.ibs.internet</string>
 </resources>

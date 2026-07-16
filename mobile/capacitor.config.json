@@ -1,0 +1,13 @@
+{
+  "appId": "com.ibs.internet",
+  "appName": "IBS Internet",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK"
+    }
+  }
+}
