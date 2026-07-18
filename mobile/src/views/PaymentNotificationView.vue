@@ -51,6 +51,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSubscriberStore } from '../stores/subscriber'
 import { useToastStore } from '../stores/toast'
 import { getApiMessage, getApiPurpose, isApiError } from '../composables/apiMessage'
+import { clearPendingPayment } from '../composables/pendingPayment'
 
 const route = useRoute()
 const router = useRouter()
@@ -145,6 +146,9 @@ onMounted(async () => {
   meta.requestId = String(route.query.requestId || '')
   meta.status = String(route.query.status || '')
   meta.paymentType = String(route.query.paymentType || '')
+
+  // Clear ASAP so resume listeners don't loop back here.
+  clearPendingPayment()
 
   if (!meta.paymentId) {
     state.value = 'error'

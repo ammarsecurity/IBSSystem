@@ -149,6 +149,10 @@ import { useSubscriberStore } from '../stores/subscriber'
 import { useToastStore } from '../stores/toast'
 import { formatMoney } from '../composables/format'
 import { getApiMessage, isApiError } from '../composables/apiMessage'
+import {
+  extractPaymentIds,
+  savePendingPayment,
+} from '../composables/pendingPayment'
 
 const store = useSubscriberStore()
 const toast = useToastStore()
@@ -307,7 +311,19 @@ async function startOnlinePayment() {
     return
   }
 
-  toast.success('أكمل الدفع في الصفحة الجديدة، ثم ستتم إعادة توجيهك للتأكيد', 'جاهز للدفع')
+  const ids = extractPaymentIds(payload)
+  savePendingPayment({
+    paymentId: ids.paymentId,
+    requestId: ids.requestId,
+    purpose: 'Refill',
+  })
+
+  toast.success(
+    Capacitor.isNativePlatform()
+      ? 'أكمل الدفع ثم أغلق صفحة الدفع للعودة للتطبيق والتأكيد'
+      : 'أكمل الدفع في الصفحة الجديدة، ثم ستتم إعادة توجيهك للتأكيد',
+    'جاهز للدفع',
+  )
   await openPaymentUrl(formUrl)
 }
 
