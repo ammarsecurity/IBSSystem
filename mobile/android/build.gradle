@@ -7,7 +7,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.android.tools.build:gradle:8.5.2'
         classpath 'com.google.gms:google-services:4.4.4'
 
         // NOTE: Do not place your application dependencies here; they belong
@@ -21,6 +21,34 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+}
+
+subprojects { subproject ->
+    subproject.configurations.configureEach { configuration ->
+        configuration.resolutionStrategy {
+            force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.24'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24'
+        }
+        configuration.exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        configuration.exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
+
+    // Android Studio Gradle JDK is often 17 and ignores org.gradle.java.home.
+    // Force Java 17 so Capacitor's default Java 21 setting does not break the IDE build.
+    subproject.afterEvaluate {
+        if (subproject.plugins.hasPlugin('com.android.library') ||
+            subproject.plugins.hasPlugin('com.android.application')) {
+            subproject.android.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+        subproject.tasks.withType(JavaCompile).configureEach { task ->
+            task.sourceCompatibility = JavaVersion.VERSION_17.toString()
+            task.targetCompatibility = JavaVersion.VERSION_17.toString()
+        }
     }
 }
 

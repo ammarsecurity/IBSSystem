@@ -58,17 +58,7 @@
         </div>
       </section>
 
-      <section class="flags surface rise" style="animation-delay: 0.2s">
-        <h3>الصلاحيات</h3>
-        <div class="flag-grid">
-          <div v-for="flag in flags" :key="flag.label" class="flag" :class="{ on: flag.on }">
-            <strong>{{ flag.label }}</strong>
-            <span>{{ flag.on ? 'متاح' : 'غير متاح' }}</span>
-          </div>
-        </div>
-      </section>
-
-      <div class="actions rise" style="animation-delay: 0.24s">
+      <div class="actions rise" style="animation-delay: 0.2s">
         <button class="btn btn-primary" type="button" @click="$router.push('/refill')">
           تجديد الاشتراك
         </button>
@@ -96,10 +86,6 @@ const subscription = computed(() => store.subscription || null)
 function val(value, fallback = '—') {
   if (value === null || value === undefined || value === '') return fallback
   return String(value)
-}
-
-function yesNo(v) {
-  return v ? 'نعم' : 'لا'
 }
 
 function formatWhen(raw) {
@@ -142,11 +128,8 @@ const onlineTone = computed(() => {
   return ''
 })
 
-const customer = computed(() => subscription.value?.customer || {})
-
 const groups = computed(() => {
   const s = subscription.value || {}
-  const c = customer.value || {}
   return [
     {
       title: 'بيانات المستخدم',
@@ -178,31 +161,6 @@ const groups = computed(() => {
         { label: 'مصدر الدخول', value: val(s.loginFrom) },
       ],
     },
-    {
-      title: 'الوكيل والعميل',
-      rows: [
-        { label: 'الوكيل', value: val(s.agentName) },
-        { label: 'الشبكة / الـ Affiliate', value: val(s.affiliateName) },
-        { label: 'اسم العميل', value: val(c.customerFullName) },
-        { label: 'هاتف العميل', value: val(c.customerPhoneNumber) },
-        { label: 'هاتف إضافي', value: val(c.customerSecondPhoneNumber) },
-        { label: 'البريد', value: val(c.email) },
-        { label: 'العنوان', value: val(c.address) },
-      ],
-    },
-  ]
-})
-
-const flags = computed(() => {
-  const s = subscription.value || {}
-  return [
-    { label: 'التجديد', on: Boolean(s.canRefill) },
-    { label: 'التمديد', on: Boolean(s.canExtendUser) },
-    { label: 'تغيير الباقة', on: Boolean(s.canChangeAccount) },
-    { label: 'الحذف', on: Boolean(s.canDelete) },
-    { label: 'المستخدم نشط', on: Boolean(s.userActive) },
-    { label: 'إدارة النشاط', on: Boolean(s.userActiveManage) },
-    { label: 'ربط اشتراك للعميل', on: Boolean(s.customer?.canAttachSubscription) },
   ]
 })
 
@@ -354,14 +312,12 @@ onMounted(refresh)
   background: var(--danger);
 }
 
-.card,
-.flags {
+.card {
   padding: 16px;
   margin-bottom: 12px;
 }
 
-.card h3,
-.flags h3 {
+.card h3 {
   margin: 0 0 12px;
   font-size: 0.98rem;
 }
@@ -401,37 +357,6 @@ onMounted(refresh)
 
 .row .bad {
   color: var(--danger);
-}
-
-.flag-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.flag {
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: rgba(214, 69, 69, 0.08);
-  display: grid;
-  gap: 4px;
-}
-
-.flag.on {
-  background: var(--accent-soft);
-}
-
-.flag strong {
-  font-size: 0.86rem;
-}
-
-.flag span {
-  font-size: 0.78rem;
-  color: var(--ink-muted);
-}
-
-.flag.on span {
-  color: var(--accent-deep);
 }
 
 .actions {

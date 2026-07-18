@@ -28,8 +28,8 @@
 
     <section class="block rise" style="animation-delay: 0.08s">
       <div class="block-head">
-        <h2>الباقات المتاحة</h2>
-        <span class="count" v-if="visiblePackages.length">{{ visiblePackages.length }} باقة</span>
+        <h2>باقتك الحالية</h2>
+        <span class="count" v-if="currentPackage">تجديد فقط</span>
       </div>
 
       <div v-if="store.loading && !packages.length" class="skel-list">
@@ -47,17 +47,19 @@
 
       <div v-else class="pkg-grid">
         <button
-          v-for="(pkg, index) in visiblePackages"
+          v-for="pkg in visiblePackages"
           :key="pkg.id"
           type="button"
           class="pkg"
           :class="{
             active: form.profileId === pkg.id,
-            featured: isFeatured(pkg, index),
+            current: isCurrentPackage(pkg),
+            disabled: !isCurrentPackage(pkg),
           }"
+          :disabled="!isCurrentPackage(pkg)"
           @click="selectPackage(pkg)"
         >
-          <div class="pkg-badge" v-if="isFeatured(pkg, index)">الأكثر طلباً</div>
+          <div class="pkg-badge" v-if="isCurrentPackage(pkg)">الباقة الحالية</div>
           <div class="pkg-radio" aria-hidden="true">
             <span />
           </div>
@@ -70,6 +72,7 @@
               <span class="amount num">{{ formatMoney(pkg.price) }}</span>
               <span class="period"> / تجديد</span>
             </div>
+            <p v-if="!isCurrentPackage(pkg)" class="pkg-locked">غير متاحة — التجديد للباقة الحالية فقط</p>
           </div>
         </button>
       </div>
@@ -140,7 +143,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import { useSubscriberStore } from '../stores/subscriber'
 import { useToastStore } from '../stores/toast'
@@ -160,9 +163,35 @@ const packages = computed(() => store.packages || [])
 const subscription = computed(() => store.subscription)
 const canCredit = computed(() => Boolean(store.financial?.canActiveNoCash))
 
+const currentPackage = computed(() => {
+  const sub = subscription.value
+  const list = packages.value
+  if (!sub || !list.length) return null
+
+  const byIndex = list.find(
+    (p) => Number(p.accIndex) === Number(sub.accountIndex),
+  )
+  if (byIndex) return byIndex
+
+  const name = String(sub.accountName || '')
+    .trim()
+    .toLowerCase()
+  if (!name) return null
+  return (
+    list.find((p) => String(p.name || '').trim().toLowerCase() === name) || null
+  )
+})
+
+const currentPackageId = computed(() => currentPackage.value?.id ?? null)
+
 const visiblePackages = computed(() => {
   const list = [...packages.value]
+  const currentId = currentPackageId.value
   return list.sort((a, b) => {
+    const aCurrent = currentId != null && a.id === currentId
+    const bCurrent = currentId != null && b.id === currentId
+    if (aCurrent && !bCurrent) return -1
+    if (bCurrent && !aCurrent) return 1
     const pa = Number(a.price) || 0
     const pb = Number(b.price) || 0
     if (pa === 0 && pb !== 0) return 1
@@ -187,16 +216,27 @@ const icons = {
   credit: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M12 3v18M8 8h5.2a2.4 2.4 0 0 1 0 4.8H9.2a2.4 2.4 0 0 0 0 4.8H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
 }
 
-function isFeatured(pkg, index) {
-  const paid = visiblePackages.value.filter((p) => Number(p.price) > 0)
-  if (paid.length < 2) return false
-  const mid = paid[Math.min(1, paid.length - 1)]
-  return pkg.id === mid?.id
+function isCurrentPackage(pkg) {
+  return currentPackageId.value != null && pkg.id === currentPackageId.value
 }
 
 function selectPackage(pkg) {
+  if (!isCurrentPackage(pkg)) {
+    toast.info('يمكنك تجديد الباقة الحالية فقط', 'تنبيه')
+    return
+  }
   form.profileId = pkg.id
 }
+
+function lockToCurrentPackage() {
+  if (currentPackage.value) {
+    form.profileId = currentPackage.value.id
+  } else {
+    form.profileId = null
+  }
+}
+
+watch(currentPackage, lockToCurrentPackage, { immediate: true })
 
 async function openPaymentUrl(url) {
   if (!url) return
@@ -213,8 +253,8 @@ async function openPaymentUrl(url) {
 }
 
 async function onRefill() {
-  if (!form.profileId) {
-    toast.info('اختر باقة أولاً ثم أكّد التجديد', 'تنبيه')
+  if (!form.profileId || !isCurrentPackage({ id: form.profileId })) {
+    toast.info('يمكنك تجديد الباقة الحالية فقط', 'تنبيه')
     return
   }
 
@@ -464,15 +504,28 @@ onMounted(async () => {
   transform: scale(0.99);
 }
 
-.pkg.featured {
-  background:
-    linear-gradient(180deg, rgba(0, 174, 239, 0.06), transparent 40%),
-    var(--surface);
-}
-
 .pkg.active {
   border-color: rgba(0, 174, 239, 0.55);
   box-shadow: 0 12px 28px rgba(14, 143, 114, 0.12);
+}
+
+.pkg.current {
+  background:
+    linear-gradient(180deg, rgba(0, 174, 239, 0.08), transparent 42%),
+    var(--surface);
+}
+
+.pkg.disabled,
+.pkg:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.pkg.disabled:active,
+.pkg:disabled:active {
+  transform: none;
 }
 
 .pkg-badge {
@@ -525,6 +578,13 @@ onMounted(async () => {
   color: var(--ink-muted);
   font-size: 0.8rem;
   line-height: 1.4;
+}
+
+.pkg-locked {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  line-height: 1.35;
 }
 
 .pkg-price {
