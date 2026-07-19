@@ -9,6 +9,13 @@ const routes = [
     meta: { guest: true },
   },
   {
+    // Public: Qi returnUrl opens this in an external browser without app auth.
+    path: '/payment/notification',
+    name: 'payment-notification',
+    component: () => import('../views/PaymentNotificationView.vue'),
+    meta: { public: true },
+  },
+  {
     path: '/',
     component: () => import('../components/AppShell.vue'),
     meta: { requiresAuth: true },
@@ -44,11 +51,6 @@ const routes = [
         component: () => import('../views/PaymentView.vue'),
       },
       {
-        path: 'payment/notification',
-        name: 'payment-notification',
-        component: () => import('../views/PaymentNotificationView.vue'),
-      },
-      {
         path: 'more',
         name: 'more',
         component: () => import('../views/MoreView.vue'),
@@ -64,8 +66,9 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
+  if (to.meta.public) return true
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    return { name: 'login' }
+    return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.meta.guest && auth.isAuthenticated) {
     return { name: 'home' }

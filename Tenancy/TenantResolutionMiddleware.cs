@@ -3,12 +3,13 @@ using System.Security.Claims;
 namespace IBSMobile.Tenancy;
 
 /// <summary>
-/// Resolves the tenant database from the JWT Company claim after authentication.
-/// Login sets the tenant explicitly before querying.
+/// Resolves the tenant database from the JWT Company claim after authentication,
+/// or from X-Company / company query for anonymous payment return callbacks.
 /// </summary>
 public class TenantResolutionMiddleware
 {
     public const string CompanyClaimType = "Company";
+    public const string CompanyHeaderName = "X-Company";
 
     private readonly RequestDelegate _next;
 
@@ -22,16 +23,24 @@ public class TenantResolutionMiddleware
         ITenantConnectionAccessor tenant,
         ICompanyConnectionResolver resolver)
     {
+        string? companyHint = null;
+
         if (context.User.Identity?.IsAuthenticated == true)
         {
-            var companyClaim = context.User.FindFirstValue(CompanyClaimType)
+            companyHint = context.User.FindFirstValue(CompanyClaimType)
                 ?? context.User.FindFirstValue("company");
+        }
 
-            if (!string.IsNullOrWhiteSpace(companyClaim) &&
-                resolver.TryResolve(companyClaim, out var key, out var connectionString, out _))
-            {
-                tenant.SetCompany(key, connectionString);
-            }
+        if (string.IsNullOrWhiteSpace(companyHint))
+        {
+            companyHint = context.Request.Headers[CompanyHeaderName].FirstOrDefault()
+                ?? context.Request.Query["company"].FirstOrDefault();
+        }
+
+        if (!string.IsNullOrWhiteSpace(companyHint) &&
+            resolver.TryResolve(companyHint, out var key, out var connectionString, out _))
+        {
+            tenant.SetCompany(key, connectionString);
         }
 
         await _next(context);

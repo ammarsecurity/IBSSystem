@@ -5,6 +5,7 @@ using IBSMobile.DTOs;
 using IBSMobile.Functions;
 using IBSMobile.Models;
 using IBSMobile.Statics;
+using IBSMobile.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using System.Text;
@@ -20,6 +21,7 @@ public class SubscriberService : ISubscriberService
     private readonly ApplicationDbContext _context;
     private readonly IBSFunctions _function;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ITenantConnectionAccessor _tenant;
     private readonly string _qiBaseUri;
     private readonly string _qiSucceedRedirect;
     private readonly string _qiCreatePath;
@@ -33,11 +35,13 @@ public class SubscriberService : ISubscriberService
         IConfiguration configuration,
         ApplicationDbContext db,
         IBSFunctions function,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        ITenantConnectionAccessor tenant)
     {
         _context = db;
         _function = function;
         _httpClientFactory = httpClientFactory;
+        _tenant = tenant;
         _qiBaseUri = configuration["QiCard:BaseUri"] ?? "";
         _qiSucceedRedirect = ResolveQiReturnUrl(
             configuration["QiCard:returnUrl"],
@@ -74,6 +78,17 @@ public class SubscriberService : ISubscriberService
         }
 
         return raw.TrimEnd('/');
+    }
+
+    private string BuildQiCallbackUrl()
+    {
+        var baseUrl = _qiSucceedRedirect.TrimEnd('/');
+        var company = _tenant.CompanyKey;
+        if (string.IsNullOrWhiteSpace(company))
+            return baseUrl;
+
+        var separator = baseUrl.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+        return $"{baseUrl}{separator}company={Uri.EscapeDataString(company)}";
     }
 
     private static string NormalizeAffiliateType(string? affiliateType) =>
@@ -439,7 +454,7 @@ public class SubscriberService : ISubscriberService
         await _context.Payments.AddAsync(payment);
         await _context.SaveChangesAsync();
 
-        var callbackUrl = _qiSucceedRedirect;
+        var callbackUrl = BuildQiCallbackUrl();
         var body = new DtoCreatePaymentObject
         {
             token = _qiToken,
@@ -480,7 +495,7 @@ public class SubscriberService : ISubscriberService
     }
 
     public async Task<Response> ConfirmPaymentAsync(
-        int subscriberId,
+        int? subscriberId,
         string qiPaymentId,
         string? requestId = null,
         string? statusHint = null)
@@ -488,13 +503,22 @@ public class SubscriberService : ISubscriberService
         if (string.IsNullOrWhiteSpace(qiPaymentId))
             return _function.ErrorResponse("معرف الدفع غير صالح");
 
-        var payment = await _context.Payments
-            .FirstOrDefaultAsync(p =>
-                p.SubscriberId == subscriberId &&
-                (p.PaymentId == qiPaymentId || (!string.IsNullOrWhiteSpace(requestId) && p.RequestId == requestId)));
+        var paymentQuery = _context.Payments.AsQueryable();
+
+        if (subscriberId is > 0)
+        {
+            paymentQuery = paymentQuery.Where(p => p.SubscriberId == subscriberId.Value);
+        }
+
+        var payment = await paymentQuery.FirstOrDefaultAsync(p =>
+            p.PaymentId == qiPaymentId ||
+            (!string.IsNullOrWhiteSpace(requestId) && p.RequestId == requestId));
 
         if (payment == null)
             return _function.ErrorResponse("عملية الدفع غير موجودة");
+
+        // Prefer the subscriber tied to the payment row (works for anonymous return-url confirm).
+        subscriberId = payment.SubscriberId;
 
         var isDebt = string.Equals(payment.Purpose, "Debt", StringComparison.OrdinalIgnoreCase);
 
@@ -557,7 +581,7 @@ public class SubscriberService : ISubscriberService
 
         if (isDebt)
         {
-            var debtResult = await ExecutePaidDebtAsync(subscriberId, payment.Amount);
+            var debtResult = await ExecutePaidDebtAsync(subscriberId.Value, payment.Amount);
             if (debtResult.error)
             {
                 payment.FailureReason = debtResult.message ?? "فشل تسجيل تسديد الدين بعد الدفع";
@@ -583,7 +607,7 @@ public class SubscriberService : ISubscriberService
         if (payment.ProfileId is null or <= 0)
             return _function.ErrorResponse("تم الدفع لكن الباقة غير مرتبطة بعملية الدفع");
 
-        var refillResult = await ExecutePaidRefillAsync(subscriberId, payment.ProfileId.Value, payment.SaleType);
+        var refillResult = await ExecutePaidRefillAsync(subscriberId.Value, payment.ProfileId.Value, payment.SaleType);
         if (refillResult.error)
         {
             payment.FailureReason = refillResult.message ?? "فشل التجديد بعد الدفع";

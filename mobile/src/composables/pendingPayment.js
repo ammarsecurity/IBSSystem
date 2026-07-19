@@ -1,11 +1,12 @@
 const STORAGE_KEY = 'ibs.pendingPayment'
 
-export function savePendingPayment({ paymentId, requestId, purpose } = {}) {
+export function savePendingPayment({ paymentId, requestId, purpose, company } = {}) {
   if (!paymentId) return
   const payload = {
     paymentId: String(paymentId),
     requestId: requestId ? String(requestId) : '',
     purpose: purpose || 'Refill',
+    company: company ? String(company) : '',
     savedAt: Date.now(),
   }
   try {

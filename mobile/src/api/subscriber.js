@@ -37,5 +37,8 @@ export function createPayment(payload) {
 }
 
 export function confirmPayment(payload) {
-  return api.post('/api/Subscriber/payment/confirm', payload)
+  const company = payload?.company || payload?.Company
+  const headers = {}
+  if (company) headers['X-Company'] = company
+  return api.post('/api/Subscriber/payment/confirm', payload, { headers })
 }

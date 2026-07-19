@@ -22,18 +22,30 @@
 
       <div class="actions">
         <button
-          v-if="state === 'success'"
+          v-if="state === 'success' && auth.isAuthenticated"
           class="btn btn-primary"
           type="button"
           @click="goNext"
         >
           {{ primaryActionLabel }}
         </button>
-        <button class="btn btn-ghost" type="button" @click="$router.replace('/')">
-          الصفحة الرئيسية
+        <button
+          v-if="state === 'success' && !auth.isAuthenticated"
+          class="btn btn-primary"
+          type="button"
+          @click="router.replace({ name: 'login' })"
+        >
+          تسجيل الدخول للمتابعة
         </button>
         <button
-          v-if="state !== 'success'"
+          class="btn btn-ghost"
+          type="button"
+          @click="router.replace(auth.isAuthenticated ? '/' : { name: 'login' })"
+        >
+          {{ auth.isAuthenticated ? 'الصفحة الرئيسية' : 'تسجيل الدخول' }}
+        </button>
+        <button
+          v-if="state !== 'success' && auth.isAuthenticated"
           class="btn btn-ghost"
           type="button"
           @click="$router.replace(purpose === 'Debt' ? '/payment' : '/refill')"
@@ -49,6 +61,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSubscriberStore } from '../stores/subscriber'
+import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import { getApiMessage, getApiPurpose, isApiError } from '../composables/apiMessage'
 import { clearPendingPayment } from '../composables/pendingPayment'
@@ -56,6 +69,7 @@ import { clearPendingPayment } from '../composables/pendingPayment'
 const route = useRoute()
 const router = useRouter()
 const store = useSubscriberStore()
+const auth = useAuthStore()
 const toast = useToastStore()
 
 const state = ref('loading')
@@ -110,6 +124,10 @@ function localizeMessage(text) {
 
 function goNext() {
   clearTimers()
+  if (!auth.isAuthenticated) {
+    router.replace({ name: 'login' })
+    return
+  }
   router.replace(purpose.value === 'Debt' ? '/receivables' : '/refill')
 }
 
@@ -146,6 +164,7 @@ onMounted(async () => {
   meta.requestId = String(route.query.requestId || '')
   meta.status = String(route.query.status || '')
   meta.paymentType = String(route.query.paymentType || '')
+  const company = String(route.query.company || auth.company || '').trim()
 
   // Clear ASAP so resume listeners don't loop back here.
   clearPendingPayment()
@@ -163,6 +182,8 @@ onMounted(async () => {
       paymentId: meta.paymentId,
       requestId: meta.requestId || undefined,
       status: meta.status || undefined,
+      company: company || undefined,
+      Company: company || undefined,
     })
 
     purpose.value = getApiPurpose(data) || 'Refill'
@@ -189,8 +210,10 @@ onMounted(async () => {
           ? 'تم تسديد الدين بنجاح'
           : 'تم الدفع وتجديد الاشتراك بنجاح'
     toast.success(description.value, purpose.value === 'Debt' ? 'تم التسديد' : 'تم التفعيل')
-    await store.loadDashboard()
-    startRedirectCountdown(7)
+    if (auth.isAuthenticated) {
+      await store.loadDashboard()
+      startRedirectCountdown(7)
+    }
   } catch (err) {
     const text = localizeMessage(
       getApiMessage(

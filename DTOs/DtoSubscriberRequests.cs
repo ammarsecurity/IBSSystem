@@ -35,4 +35,7 @@ public class DtoConfirmPaymentRequest
     public string? RequestId { get; set; }
 
     public string? Status { get; set; }
+
+    /// <summary>Tenant company key for anonymous confirm after Qi returnUrl.</summary>
+    public string? Company { get; set; }
 }

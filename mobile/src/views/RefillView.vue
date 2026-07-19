@@ -153,9 +153,11 @@ import {
   extractPaymentIds,
   savePendingPayment,
 } from '../composables/pendingPayment'
+import { useAuthStore } from '../stores/auth'
 
 const store = useSubscriberStore()
 const toast = useToastStore()
+const auth = useAuthStore()
 const loading = ref(false)
 
 const form = reactive({
@@ -316,6 +318,7 @@ async function startOnlinePayment() {
     paymentId: ids.paymentId,
     requestId: ids.requestId,
     purpose: 'Refill',
+    company: auth.company || '',
   })
 
   toast.success(

@@ -12,6 +12,7 @@ function notificationPath(pending, extraQuery = {}) {
   const params = new URLSearchParams()
   if (pending.paymentId) params.set('paymentId', pending.paymentId)
   if (pending.requestId) params.set('requestId', pending.requestId)
+  if (pending.company) params.set('company', pending.company)
   Object.entries(extraQuery).forEach(([key, value]) => {
     if (value != null && value !== '') params.set(key, String(value))
   })

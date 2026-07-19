@@ -20,5 +20,5 @@ public interface ISubscriberService
         bool saleType = true,
         string? purpose = null,
         string? returnUrl = null);
-    Task<Response> ConfirmPaymentAsync(int subscriberId, string qiPaymentId, string? requestId = null, string? statusHint = null);
+    Task<Response> ConfirmPaymentAsync(int? subscriberId, string qiPaymentId, string? requestId = null, string? statusHint = null);
 }

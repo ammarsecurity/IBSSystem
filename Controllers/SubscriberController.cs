@@ -95,12 +95,20 @@ public class SubscriberController : ControllerBase
         return result.error ? BadRequest(result) : Ok(result);
     }
 
+    [AllowAnonymous]
     [HttpPost("payment/confirm")]
     public async Task<ActionResult<Response>> ConfirmPaymentAsync(
         [FromBody] DtoConfirmPaymentRequest dto,
         CancellationToken cancellationToken)
     {
-        var userId = GetAuthenticatedUserId();
+        // Return URL opens in an external browser without the app JWT.
+        // Tenant must be set via X-Company / ?company= (see TenantResolutionMiddleware).
+        // Subscriber is resolved from the Payments row.
+        int? userId = null;
+        var claim = User.FindFirstValue("UserId") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (int.TryParse(claim, out var parsedUserId) && parsedUserId > 0)
+            userId = parsedUserId;
+
         var result = await _subscriberService.ConfirmPaymentAsync(
             userId,
             dto.PaymentId,

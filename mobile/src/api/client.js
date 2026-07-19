@@ -65,7 +65,7 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    if (status === 401 && !url.includes('/Auth/login')) {
+    if (status === 401 && !url.includes('/Auth/login') && !url.includes('/payment/confirm')) {
       // Only logout if token exists and server explicitly rejected it on same origin
       const requestUrl = error.config?.baseURL || ''
       const isHttpsRedirectTarget = String(error.request?.responseURL || '').includes('7101')
