@@ -10,7 +10,8 @@ const routes = [
   },
   {
     // Public: Qi returnUrl opens this in an external browser without app auth.
-    path: '/payment/notification',
+    // Company is in the path to avoid Qi corrupting query params (company=KGD?requestId=...).
+    path: '/payment/notification/:company?',
     name: 'payment-notification',
     component: () => import('../views/PaymentNotificationView.vue'),
     meta: { public: true },

@@ -37,6 +37,10 @@ public class TenantResolutionMiddleware
                 ?? context.Request.Query["company"].FirstOrDefault();
         }
 
+        // Qi sometimes appends with "?" and corrupts values: "KGD?requestId=..."
+        if (!string.IsNullOrWhiteSpace(companyHint))
+            companyHint = companyHint.Split('?', 2)[0].Split('&', 2)[0].Trim();
+
         if (!string.IsNullOrWhiteSpace(companyHint) &&
             resolver.TryResolve(companyHint, out var key, out var connectionString, out _))
         {

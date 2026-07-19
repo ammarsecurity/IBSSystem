@@ -164,7 +164,17 @@ onMounted(async () => {
   meta.requestId = String(route.query.requestId || '')
   meta.status = String(route.query.status || '')
   meta.paymentType = String(route.query.paymentType || '')
-  const company = String(route.query.company || auth.company || '').trim()
+
+  // Prefer path param; sanitize Qi-mangled query values like "KGD?requestId=..."
+  const rawCompany = String(
+    route.params.company || route.query.company || auth.company || '',
+  ).trim()
+  const companyFromRequestId = String(meta.requestId).includes('.')
+    ? String(meta.requestId).split('.')[0]
+    : ''
+  const company = (rawCompany.split('?')[0].split('&')[0] || companyFromRequestId)
+    .trim()
+    .toUpperCase()
 
   // Clear ASAP so resume listeners don't loop back here.
   clearPendingPayment()

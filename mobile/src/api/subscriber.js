@@ -37,8 +37,26 @@ export function createPayment(payload) {
 }
 
 export function confirmPayment(payload) {
-  const company = payload?.company || payload?.Company
+  let company = payload?.company || payload?.Company || ''
+  // Qi may corrupt query values into "KGD?requestId=..."
+  company = String(company).split('?')[0].split('&')[0].trim()
+
+  let requestId = payload?.requestId || payload?.RequestId || ''
+  if (!requestId && String(payload?.company || payload?.Company || '').includes('?requestId=')) {
+    requestId = String(payload.company || payload.Company)
+      .split('?requestId=')[1]
+      ?.split('&')[0] || ''
+  }
+
+  const body = {
+    ...payload,
+    company: company || undefined,
+    Company: company || undefined,
+    requestId: requestId || payload?.requestId,
+    RequestId: requestId || payload?.RequestId,
+  }
+
   const headers = {}
   if (company) headers['X-Company'] = company
-  return api.post('/api/Subscriber/payment/confirm', payload, { headers })
+  return api.post('/api/Subscriber/payment/confirm', body, { headers })
 }

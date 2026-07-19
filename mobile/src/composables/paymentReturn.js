@@ -12,12 +12,18 @@ function notificationPath(pending, extraQuery = {}) {
   const params = new URLSearchParams()
   if (pending.paymentId) params.set('paymentId', pending.paymentId)
   if (pending.requestId) params.set('requestId', pending.requestId)
-  if (pending.company) params.set('company', pending.company)
   Object.entries(extraQuery).forEach(([key, value]) => {
     if (value != null && value !== '') params.set(key, String(value))
   })
   const qs = params.toString()
-  return qs ? `/payment/notification?${qs}` : '/payment/notification'
+  const company = String(pending.company || '')
+    .split('?')[0]
+    .split('&')[0]
+    .trim()
+  const base = company
+    ? `/payment/notification/${encodeURIComponent(company)}`
+    : '/payment/notification'
+  return qs ? `${base}?${qs}` : base
 }
 
 function parseDeepLink(url) {

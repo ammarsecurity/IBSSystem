@@ -87,8 +87,38 @@ public class SubscriberService : ISubscriberService
         if (string.IsNullOrWhiteSpace(company))
             return baseUrl;
 
-        var separator = baseUrl.Contains('?', StringComparison.Ordinal) ? "&" : "?";
-        return $"{baseUrl}{separator}company={Uri.EscapeDataString(company)}";
+        // Put company in the PATH (not query). Qi appends its own params with "?"
+        // which corrupts values like company=KGD?requestId=... when we use query string.
+        if (baseUrl.Contains("/payment/notification", StringComparison.OrdinalIgnoreCase))
+        {
+            var trimmed = baseUrl.Split('?', 2)[0].TrimEnd('/');
+            return $"{trimmed}/{Uri.EscapeDataString(company)}";
+        }
+
+        return $"{baseUrl.Split('?', 2)[0].TrimEnd('/')}/{Uri.EscapeDataString(company)}";
+    }
+
+    private string BuildPaymentRequestId()
+    {
+        var guid = Guid.NewGuid().ToString("N");
+        var company = _tenant.CompanyKey;
+        // Backup channel: company survives even if return URL parsing fails.
+        return string.IsNullOrWhiteSpace(company)
+            ? guid
+            : $"{company.Trim().ToUpperInvariant()}.{guid}";
+    }
+
+    private static string? ExtractCompanyFromRequestId(string? requestId)
+    {
+        if (string.IsNullOrWhiteSpace(requestId))
+            return null;
+
+        var dot = requestId.IndexOf('.');
+        if (dot is <= 0 or >= requestId.Length - 1)
+            return null;
+
+        var prefix = requestId[..dot].Trim();
+        return prefix.Length is >= 2 and <= 32 ? prefix : null;
     }
 
     private static string NormalizeAffiliateType(string? affiliateType) =>
@@ -435,7 +465,7 @@ public class SubscriberService : ISubscriberService
                 return _function.ErrorResponse("نوع الاشتراك غير صحيح");
         }
 
-        var requestId = Guid.NewGuid().ToString("N");
+        var requestId = BuildPaymentRequestId();
         var payment = new Payment
         {
             SubscriberId = subscriberId,

@@ -63,7 +63,10 @@ public class CompanyConnectionResolver : ICompanyConnectionResolver
 
     private static string Normalize(string value)
     {
-        return value
+        // Guard against Qi mangling query strings: "KGD?requestId=..."
+        var cleaned = value.Split('?', 2)[0].Split('&', 2)[0].Split('/', 2)[0];
+
+        return cleaned
             .Trim()
             .Replace(" ", string.Empty, StringComparison.Ordinal)
             .Replace("-", string.Empty, StringComparison.Ordinal)
