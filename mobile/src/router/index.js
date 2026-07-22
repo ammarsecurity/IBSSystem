@@ -9,9 +9,14 @@ const routes = [
     meta: { guest: true },
   },
   {
-    // Public: Qi returnUrl opens this in an external browser without app auth.
-    // Company is in the path to avoid Qi corrupting query params (company=KGD?requestId=...).
-    path: '/payment/notification/:company?',
+    // Public: Qi returnUrl — company in PATH (Qi corrupts ?company= by appending with ?).
+    path: '/payment/notification/:company',
+    name: 'payment-notification-company',
+    component: () => import('../views/PaymentNotificationView.vue'),
+    meta: { public: true },
+  },
+  {
+    path: '/payment/notification',
     name: 'payment-notification',
     component: () => import('../views/PaymentNotificationView.vue'),
     meta: { public: true },
@@ -67,7 +72,7 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
-  if (to.meta.public) return true
+  if (to.matched.some((r) => r.meta.public)) return true
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
