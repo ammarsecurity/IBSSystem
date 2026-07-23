@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace IBSMobile.Models
 {
+    [Table("Users")]
     public class User
     {
         [Key]

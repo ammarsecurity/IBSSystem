@@ -114,10 +114,12 @@ public class SubscriberService : ISubscriberService
             return null;
 
         var dot = requestId.IndexOf('.');
-        if (dot is <= 0 or >= requestId.Length - 1)
+
+        if (dot <= 0 || dot >= requestId.Length - 1)
             return null;
 
         var prefix = requestId[..dot].Trim();
+
         return prefix.Length is >= 2 and <= 32 ? prefix : null;
     }
 
@@ -381,36 +383,40 @@ public class SubscriberService : ISubscriberService
         if (amountDue <= 0)
             return _function.SuccessResponse("لا يوجد مبلغ مستحق");
 
-        var userAppUserId = await GetUserAppUserIdAsync();
-
-        var subsc = await _context.Subscribers
-            .AsNoTracking()
-            .FirstOrDefaultAsync(m => m.IsValid && m.Id == userId);
-
-        if (subsc == null)
-            return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
-
-        var cashAccount = await _context.Chart_Accounts
-            .AsNoTracking()
-            .FirstOrDefaultAsync(m => m.Ch_Id == _cachedCashAccountId);
-
-        if (cashAccount == null)
+        var cashId = await GetUserAppCashAccountIdAsync();
+        if (cashId == 0)
             return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
 
-        var emp = await _context.User
-            .AsNoTracking()
-            .FirstOrDefaultAsync(i => i.Id == userAppUserId);
+        var userAppUserId = await GetUserAppUserIdAsync();
 
-        if (emp == null)
+        var subscExists = await _context.Subscribers
+            .AsNoTracking()
+            .AnyAsync(m => m.IsValid && m.Id == userId);
+
+        if (!subscExists)
+            return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
+
+        var cashExists = await _context.Chart_Accounts
+            .AsNoTracking()
+            .AnyAsync(m => m.Ch_Id == cashId);
+
+        if (!cashExists)
+            return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
+
+        var empExists = await _context.User
+            .AsNoTracking()
+            .AnyAsync(i => i.Id == userAppUserId);
+
+        if (!empExists)
             return _function.ErrorResponse("حساب الموضف غير محدد. يجب الاتصال بالوكيل");
 
         var receivable = new Receivable
         {
             Rec_Date = DateTime.Now,
             Rec_Amount = amountDue,
-            FK_Receivables_Rec_SubscId = subsc,
-            FK_Receivables_Rec_Cash_Account = cashAccount,
-            FK_Receivables_Rec_empid = emp,
+            Rec_SubscId = userId,
+            Rec_Cash_Account = cashId,
+            Rec_empid = userAppUserId,
             Rec_Note = "تم الاستلام من قبل التطبيق"
         };
 
@@ -670,34 +676,35 @@ public class SubscriberService : ISubscriberService
 
         var userAppUserId = await GetUserAppUserIdAsync();
 
-        var subsc = await _context.Subscribers
+        var subscExists = await _context.Subscribers
             .AsNoTracking()
-            .FirstOrDefaultAsync(m => m.IsValid && m.Id == userId);
+            .AnyAsync(m => m.IsValid && m.Id == userId);
 
-        if (subsc == null)
+        if (!subscExists)
             return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
 
-        var cashAccount = await _context.Chart_Accounts
+        var cashExists = await _context.Chart_Accounts
             .AsNoTracking()
-            .FirstOrDefaultAsync(m => m.Ch_Id == cashId);
+            .AnyAsync(m => m.Ch_Id == cashId);
 
-        if (cashAccount == null)
+        if (!cashExists)
             return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
 
-        var emp = await _context.User
+        var empExists = await _context.User
             .AsNoTracking()
-            .FirstOrDefaultAsync(i => i.Id == userAppUserId);
+            .AnyAsync(i => i.Id == userAppUserId);
 
-        if (emp == null)
+        if (!empExists)
             return _function.ErrorResponse("حساب الموظف غير محدد. يجب الاتصال بالوكيل");
 
+        // Set FK ids only — do not attach AsNoTracking navigations (causes IDENTITY inserts).
         var receivable = new Receivable
         {
             Rec_Date = DateTime.Now,
             Rec_Amount = paidAmount,
-            FK_Receivables_Rec_SubscId = subsc,
-            FK_Receivables_Rec_Cash_Account = cashAccount,
-            FK_Receivables_Rec_empid = emp,
+            Rec_SubscId = userId,
+            Rec_Cash_Account = cashId,
+            Rec_empid = userAppUserId,
             Rec_Note = "تم الاستلام إلكترونياً من التطبيق"
         };
 

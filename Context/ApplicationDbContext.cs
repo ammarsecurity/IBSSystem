@@ -91,6 +91,8 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<User>(entity =>
         {
+            entity.ToTable("Users");
+
             entity.HasOne(u => u.FK_UserCashAccount)
                 .WithMany(c => c.users)
                 .HasForeignKey("UserCashAccount")
@@ -114,6 +116,17 @@ public class ApplicationDbContext : DbContext
                 .WithMany(m => m.SubAffiliates)
                 .HasForeignKey(s => s.MainAffiliate)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Receivable>(entity =>
+        {
+            // SQL Server trigger blocks EF OUTPUT clause on INSERT/UPDATE.
+            entity.ToTable(tb => tb.HasTrigger("ReceivablesTrigger"));
+        });
+
+        modelBuilder.Entity<Activation_User>(entity =>
+        {
+            entity.ToTable(tb => tb.HasTrigger("Activation_UsersTrigger"));
         });
 
         modelBuilder.Entity<Payment>(entity =>

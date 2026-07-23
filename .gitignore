@@ -13,9 +13,6 @@ project.lock.json
 artifacts/
 
 # Secrets / local config
-appsettings.json
-appsettings.*.json
-!appsettings.Example.json
 mobile/.env
 **/secrets.json
 **/appsettings.Local.json
