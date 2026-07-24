@@ -61,7 +61,7 @@ namespace IBSMobile.Models
 
         public bool SaleType { get; set; } = true;
 
-        public bool RefillExecuted { get; set; }
+        public bool RefillExecuted { get; set; }        // paid and (execute refill or execute receivable)
 
         public DateTime? PaidAt { get; set; }
         public DateTime CreatedAt { get; set; }

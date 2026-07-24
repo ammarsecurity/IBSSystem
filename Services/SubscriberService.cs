@@ -27,6 +27,10 @@ public class SubscriberService : ISubscriberService
     private readonly string _qiCreatePath;
     private readonly string _qiStatusPath;
     private readonly string _qiToken;
+   
+    private readonly string _CashRefillingFee;
+    private readonly string _NoCashRefillingFee;
+    private readonly string _PayBackFee;
 
     private int? _cachedUserAppUserId;
     private int? _cachedCashAccountId;
@@ -49,6 +53,11 @@ public class SubscriberService : ISubscriberService
         _qiCreatePath = configuration["QiCard:CreatePath"] ?? "/api/Payment/CreateTest";
         _qiStatusPath = configuration["QiCard:StatusPath"] ?? "/api/Payment/StatusTest";
         _qiToken = configuration["QiCard:Token"] ?? "ccd589cc-fd7c-4597-86d4-8a8b62b0573b";
+
+        _CashRefillingFee = configuration["QiCard:CashRefillingFee"] ?? "3.5";
+        _NoCashRefillingFee = configuration["QiCard:NoCashRefillingFee"] ?? "3.5";
+        _PayBackFee = configuration["QiCard:PayBackFee"] ?? "2";
+     
     }
 
     /// <summary>
@@ -451,11 +460,14 @@ public class SubscriberService : ISubscriberService
         if (subscriber == null)
             return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
 
+        decimal fee = 0;
         if (normalizedPurpose == "Debt")
         {
             var amountDue = await GetAmountDue(subscriberId);
             if (amountDue <= 0)
                 return _function.ErrorResponse("لا يوجد مبلغ دين مستحق للدفع");
+
+            if (!decimal.TryParse(_PayBackFee, out fee)) fee = 0;
         }
 
         if (normalizedPurpose == "Refill")
@@ -469,7 +481,17 @@ public class SubscriberService : ISubscriberService
 
             if (profile == null)
                 return _function.ErrorResponse("نوع الاشتراك غير صحيح");
+
+            if(saleType)
+            {
+                if (!decimal.TryParse(_CashRefillingFee, out fee)) fee = 0;
+            }
+            else
+            {
+                if (!decimal.TryParse(_NoCashRefillingFee, out fee)) fee = 0;
+            }
         }
+
 
         var requestId = BuildPaymentRequestId();
         var payment = new Payment
@@ -484,6 +506,8 @@ public class SubscriberService : ISubscriberService
             ProfileId = normalizedPurpose == "Refill" ? profileId : null,
             SaleType = saleType,
             RefillExecuted = false,
+            IsReceivedFromUfeq = false,
+            Fee = fee,
             CreatedAt = DateTime.Now
         };
 
@@ -597,7 +621,6 @@ public class SubscriberService : ISubscriberService
         payment.Status = PaymentStatus.Succeeded;
         payment.PaidAt = DateTime.Now;
         payment.PaymentMethod = statusData.paymentType;
-        payment.IsReceivedFromUfeq = true;
         payment.ReceivingDate = DateTime.Now;
         payment.ModifiedAt = DateTime.Now;
         if (!string.IsNullOrWhiteSpace(statusData.requestId))
