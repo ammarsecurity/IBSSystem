@@ -107,14 +107,10 @@ public class SubscriberService : ISubscriberService
         return $"{baseUrl.Split('?', 2)[0].TrimEnd('/')}/{Uri.EscapeDataString(company)}";
     }
 
-    private string BuildPaymentRequestId()
+    private static string BuildPaymentRequestId()
     {
-        var guid = Guid.NewGuid().ToString("N");
-        var company = _tenant.CompanyKey;
-        // Backup channel: company survives even if return URL parsing fails.
-        return string.IsNullOrWhiteSpace(company)
-            ? guid
-            : $"{company.Trim().ToUpperInvariant()}.{guid}";
+        // Qi rejects longer ids (e.g. COMPANY.guid). Company goes in return URL path instead.
+        return Guid.NewGuid().ToString("N");
     }
 
     private static string? ExtractCompanyFromRequestId(string? requestId)
