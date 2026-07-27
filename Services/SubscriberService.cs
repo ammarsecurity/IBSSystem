@@ -9,6 +9,7 @@ using IBSMobile.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace IBSMobile.Services;
 
@@ -27,13 +28,14 @@ public class SubscriberService : ISubscriberService
     private readonly string _qiCreatePath;
     private readonly string _qiStatusPath;
     private readonly string _qiToken;
-   
-    private readonly string _CashRefillingFee;
-    private readonly string _NoCashRefillingFee;
-    private readonly string _PayBackFee;
+
+    private readonly decimal _payBackFeeRate;
+    private readonly decimal _cashRefillingFeeRate;
+    private readonly decimal _noCashRefillingFee;
 
     private int? _cachedUserAppUserId;
     private int? _cachedCashAccountId;
+    private string? _cachedEncryptedConnectionString;
 
     public SubscriberService(
         IConfiguration configuration,
@@ -54,11 +56,16 @@ public class SubscriberService : ISubscriberService
         _qiStatusPath = configuration["QiCard:StatusPath"] ?? "/api/Payment/StatusTest";
         _qiToken = configuration["QiCard:Token"] ?? "ccd589cc-fd7c-4597-86d4-8a8b62b0573b";
 
-        _CashRefillingFee = configuration["QiCard:CashRefillingFee"] ?? "3.5";
-        _NoCashRefillingFee = configuration["QiCard:NoCashRefillingFee"] ?? "3.5";
-        _PayBackFee = configuration["QiCard:PayBackFee"] ?? "2";
-     
+        _cashRefillingFeeRate = ParseFeePercent(configuration["QiCard:CashRefillingFee"], 3.5m);
+        _noCashRefillingFee = ParseFeeAmount(configuration["QiCard:NoCashRefillingFee"], 3.5m);
+        _payBackFeeRate = ParseFeePercent(configuration["QiCard:PayBackFee"], 2m);
     }
+
+    private static decimal ParseFeePercent(string? value, decimal fallback) =>
+        decimal.TryParse(value, out var rate) ? rate : fallback;
+
+    private static decimal ParseFeeAmount(string? value, decimal fallback) =>
+        decimal.TryParse(value, out var amount) ? amount : fallback;
 
     /// <summary>
     /// Prefer QiCard:returnUrl from appsettings. Accepts host (localhost:5173) or full URL.
@@ -98,34 +105,14 @@ public class SubscriberService : ISubscriberService
 
         // Put company in the PATH (not query). Qi appends its own params with "?"
         // which corrupts values like company=KGD?requestId=... when we use query string.
-        if (baseUrl.Contains("/payment/notification", StringComparison.OrdinalIgnoreCase))
-        {
-            var trimmed = baseUrl.Split('?', 2)[0].TrimEnd('/');
-            return $"{trimmed}/{Uri.EscapeDataString(company)}";
-        }
-
-        return $"{baseUrl.Split('?', 2)[0].TrimEnd('/')}/{Uri.EscapeDataString(company)}";
+        var trimmed = baseUrl.Split('?', 2)[0].TrimEnd('/');
+        return $"{trimmed}/{Uri.EscapeDataString(company)}";
     }
 
     private static string BuildPaymentRequestId()
     {
         // Qi rejects longer ids (e.g. COMPANY.guid). Company goes in return URL path instead.
         return Guid.NewGuid().ToString("N");
-    }
-
-    private static string? ExtractCompanyFromRequestId(string? requestId)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-            return null;
-
-        var dot = requestId.IndexOf('.');
-
-        if (dot <= 0 || dot >= requestId.Length - 1)
-            return null;
-
-        var prefix = requestId[..dot].Trim();
-
-        return prefix.Length is >= 2 and <= 32 ? prefix : null;
     }
 
     private static string NormalizeAffiliateType(string? affiliateType) =>
@@ -165,14 +152,16 @@ public class SubscriberService : ISubscriberService
         var mobileApp = await _context.SubscriberApp
             .AsNoTracking()
             .Where(m => m.SubscId == userId)
-            .Select(m => new { m.CanActiveNoCash, m.AmountDue })
-            .FirstOrDefaultAsync();
-
-        var lastActivation = await _context.Activation_Users
-            .AsNoTracking()
-            .Where(m => m.FK_Activation_Activation_SubscId.Id == userId)
-            .OrderByDescending(m => m.activation_date)
-            .Select(m => (DateTime?)m.activation_date)
+            .Select(m => new
+            {
+                m.CanActiveNoCash,
+                m.AmountDue,
+                LastActivation = _context.Activation_Users
+                    .Where(a => a.FK_Activation_Activation_SubscId.Id == userId)
+                    .OrderByDescending(a => a.activation_date)
+                    .Select(a => (DateTime?)a.activation_date)
+                    .FirstOrDefault()
+            })
             .FirstOrDefaultAsync();
 
         return new DtoFinancialInfo
@@ -181,7 +170,7 @@ public class SubscriberService : ISubscriberService
             AmountDue = credit,
             DebtLimit = mobileApp?.AmountDue,
             CanActiveNoCash = mobileApp?.CanActiveNoCash ?? false,
-            LastActivation = lastActivation
+            LastActivation = mobileApp?.LastActivation
         };
     }
 
@@ -275,6 +264,7 @@ public class SubscriberService : ISubscriberService
         var userAppUserId = await GetUserAppUserIdAsync();
 
         var credit = await _context.SubscribersCredits
+            .AsNoTracking()
             .Where(m => m.SubscId == userId)
             .Select(u => u.current_credit)
             .FirstOrDefaultAsync();
@@ -319,23 +309,12 @@ public class SubscriberService : ISubscriberService
                 return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل لغرض تحديد الحساب النقدي");
         }
 
-        var affiliateType = await (
-            from s in _context.Subscribers.AsNoTracking()
-            join ma in _context.MainAffiliates.AsNoTracking()
-                on EF.Property<int>(s, "MainAffiliate") equals ma.Id
-            where s.Id == userId
-            select ma.AffiliateType
-        ).FirstOrDefaultAsync();
-
-        if (affiliateType is null)
-            return _function.ErrorResponse("اسم المستخدم غير صحيح");
-
-        if (NormalizeAffiliateType(affiliateType) == AffiliateFtth)
-            return _function.ErrorResponse("لا يمكنك تفعيل اشتراكك الآن. يرجى المحاولة لاحقاً");
-
         var subscriber = await LoadSubscriberWithAffiliatesAsync(userId);
         if (subscriber == null)
             return _function.ErrorResponse("اسم المستخدم غير صحيح");
+
+        if (NormalizeAffiliateType(subscriber.FK_Subscribers_MainAffiliate.AffiliateType) == AffiliateFtth)
+            return _function.ErrorResponse("لا يمكنك تفعيل اشتراكك الآن. يرجى المحاولة لاحقاً");
 
         var conStr = await GetEncryptedConnectionStringAsync();
         return await ExecuteRefillAsync(
@@ -388,47 +367,11 @@ public class SubscriberService : ISubscriberService
         if (amountDue <= 0)
             return _function.SuccessResponse("لا يوجد مبلغ مستحق");
 
-        var cashId = await GetUserAppCashAccountIdAsync();
-        if (cashId == 0)
-            return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
-
-        var userAppUserId = await GetUserAppUserIdAsync();
-
-        var subscExists = await _context.Subscribers
-            .AsNoTracking()
-            .AnyAsync(m => m.IsValid && m.Id == userId);
-
-        if (!subscExists)
-            return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
-
-        var cashExists = await _context.Chart_Accounts
-            .AsNoTracking()
-            .AnyAsync(m => m.Ch_Id == cashId);
-
-        if (!cashExists)
-            return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
-
-        var empExists = await _context.User
-            .AsNoTracking()
-            .AnyAsync(i => i.Id == userAppUserId);
-
-        if (!empExists)
-            return _function.ErrorResponse("حساب الموضف غير محدد. يجب الاتصال بالوكيل");
-
-        var receivable = new Receivable
-        {
-            Rec_Date = DateTime.Now,
-            Rec_Amount = amountDue,
-            Rec_SubscId = userId,
-            Rec_Cash_Account = cashId,
-            Rec_empid = userAppUserId,
-            Rec_Note = "تم الاستلام من قبل التطبيق"
-        };
-
-        await _context.Receivables.AddAsync(receivable);
-        await _context.SaveChangesAsync();
-
-        return _function.SuccessResponse("تم تسديد المبلغ. المبلغ المطلوب صفر");
+        return await RecordReceivableAsync(
+            userId,
+            amountDue,
+            "تم الاستلام من قبل التطبيق",
+            "تم تسديد المبلغ. المبلغ المطلوب صفر");
     }
 
     public async Task<Response> CreatePaymentAsync(
@@ -463,7 +406,7 @@ public class SubscriberService : ISubscriberService
             if (amountDue <= 0)
                 return _function.ErrorResponse("لا يوجد مبلغ دين مستحق للدفع");
 
-            if (!decimal.TryParse(_PayBackFee, out fee)) fee = 0;
+            fee = amount * (_payBackFeeRate / 100);
         }
 
         if (normalizedPurpose == "Refill")
@@ -478,14 +421,9 @@ public class SubscriberService : ISubscriberService
             if (profile == null)
                 return _function.ErrorResponse("نوع الاشتراك غير صحيح");
 
-            if(saleType)
-            {
-                if (!decimal.TryParse(_CashRefillingFee, out fee)) fee = 0;
-            }
-            else
-            {
-                if (!decimal.TryParse(_NoCashRefillingFee, out fee)) fee = 0;
-            }
+            fee = saleType
+                ? amount * (_cashRefillingFeeRate / 100)
+                : _noCashRefillingFee;
         }
 
 
@@ -617,7 +555,6 @@ public class SubscriberService : ISubscriberService
         payment.Status = PaymentStatus.Succeeded;
         payment.PaidAt = DateTime.Now;
         payment.PaymentMethod = statusData.paymentType;
-        payment.ReceivingDate = DateTime.Now;
         payment.ModifiedAt = DateTime.Now;
         if (!string.IsNullOrWhiteSpace(statusData.requestId))
             payment.RequestId = statusData.requestId;
@@ -689,48 +626,59 @@ public class SubscriberService : ISubscriberService
         if (paidAmount <= 0)
             return _function.ErrorResponse("مبلغ الدين المدفوع غير صالح");
 
+        return await RecordReceivableAsync(
+            userId,
+            paidAmount,
+            "تم الاستلام إلكترونياً من التطبيق",
+            $"تم تسديد مبلغ {paidAmount:N0} دينار بنجاح");
+    }
+
+    private async Task<Response> RecordReceivableAsync(
+        int userId,
+        decimal amount,
+        string note,
+        string successMessage)
+    {
         var cashId = await GetUserAppCashAccountIdAsync();
         if (cashId == 0)
             return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
 
         var userAppUserId = await GetUserAppUserIdAsync();
 
-        var subscExists = await _context.Subscribers
+        var prerequisites = await _context.Subscribers
             .AsNoTracking()
-            .AnyAsync(m => m.IsValid && m.Id == userId);
+            .Where(s => s.Id == userId)
+            .Select(s => new
+            {
+                SubscValid = s.IsValid,
+                CashExists = _context.Chart_Accounts.Any(c => c.Ch_Id == cashId),
+                EmpExists = _context.User.Any(u => u.Id == userAppUserId)
+            })
+            .FirstOrDefaultAsync();
 
-        if (!subscExists)
+        if (prerequisites == null || !prerequisites.SubscValid)
             return _function.ErrorResponse("حساب المشترك غير موجود أو غير فعال");
 
-        var cashExists = await _context.Chart_Accounts
-            .AsNoTracking()
-            .AnyAsync(m => m.Ch_Id == cashId);
-
-        if (!cashExists)
+        if (!prerequisites.CashExists)
             return _function.ErrorResponse("الحساب النقدي غير محدد. يجب الاتصال بالوكيل");
 
-        var empExists = await _context.User
-            .AsNoTracking()
-            .AnyAsync(i => i.Id == userAppUserId);
-
-        if (!empExists)
+        if (!prerequisites.EmpExists)
             return _function.ErrorResponse("حساب الموظف غير محدد. يجب الاتصال بالوكيل");
 
-        // Set FK ids only — do not attach AsNoTracking navigations (causes IDENTITY inserts).
         var receivable = new Receivable
         {
             Rec_Date = DateTime.Now,
-            Rec_Amount = paidAmount,
+            Rec_Amount = amount,
             Rec_SubscId = userId,
             Rec_Cash_Account = cashId,
             Rec_empid = userAppUserId,
-            Rec_Note = "تم الاستلام إلكترونياً من التطبيق"
+            Rec_Note = note
         };
 
         await _context.Receivables.AddAsync(receivable);
         await _context.SaveChangesAsync();
 
-        return _function.SuccessResponse($"تم تسديد مبلغ {paidAmount:N0} دينار بنجاح");
+        return _function.SuccessResponse(successMessage);
     }
 
     private static string? ExtractResponseText(Response result)
@@ -751,10 +699,10 @@ public class SubscriberService : ISubscriberService
             return "تم الدفع وتجديد الاشتراك بنجاح";
 
         // Earthlink/SAS English success: "... next user expiration date is 16/08/2026 01:13 AM"
-        var expirationMatch = System.Text.RegularExpressions.Regex.Match(
+        var expirationMatch = Regex.Match(
             message,
             @"expiration date is\s+(.+)$",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            RegexOptions.IgnoreCase);
 
         if (message.Contains("payment was accepted", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("account has been updated", StringComparison.OrdinalIgnoreCase))
@@ -811,39 +759,15 @@ public class SubscriberService : ISubscriberService
 
     private async Task<Subscriber?> LoadSubscriberWithAffiliatesAsync(int userId)
     {
-        var keys = await _context.Subscribers
-            .AsNoTracking()
-            .Where(s => s.Id == userId)
-            .Select(s => new
-            {
-                MainId = EF.Property<int>(s, "MainAffiliate"),
-                SubId = EF.Property<int>(s, "SubAffiliate"),
-            })
-            .FirstOrDefaultAsync();
-
-        if (keys == null)
-            return null;
-
         var subscriber = await _context.Subscribers
             .AsNoTracking()
+            .Include(s => s.FK_Subscribers_MainAffiliate)
+            .Include(s => s.FK_Subscribers_SubAffiliate)
             .FirstOrDefaultAsync(s => s.Id == userId);
 
-        if (subscriber == null)
+        if (subscriber?.FK_Subscribers_MainAffiliate == null || subscriber.FK_Subscribers_SubAffiliate == null)
             return null;
 
-        var main = await _context.MainAffiliates
-            .AsNoTracking()
-            .FirstOrDefaultAsync(m => m.Id == keys.MainId);
-
-        var sub = await _context.SubAffiliates
-            .AsNoTracking()
-            .FirstOrDefaultAsync(m => m.Id == keys.SubId);
-
-        if (main == null || sub == null)
-            return null;
-
-        subscriber.FK_Subscribers_MainAffiliate = main;
-        subscriber.FK_Subscribers_SubAffiliate = sub;
         return subscriber;
     }
 
@@ -871,8 +795,12 @@ public class SubscriberService : ISubscriberService
 
     private async Task<string> GetEncryptedConnectionStringAsync()
     {
+        if (_cachedEncryptedConnectionString != null)
+            return _cachedEncryptedConnectionString;
+
         var dbConnect = _context.Database.GetConnectionString() ?? string.Empty;
-        return await Encryptions.EncryptDatabase(dbConnect);
+        _cachedEncryptedConnectionString = await Encryptions.EncryptDatabase(dbConnect);
+        return _cachedEncryptedConnectionString;
     }
 
     private async Task<Response> ExecuteRefillAsync(
@@ -887,10 +815,12 @@ public class SubscriberService : ISubscriberService
         var affiliateType = NormalizeAffiliateType(subscriber.FK_Subscribers_MainAffiliate.AffiliateType);
         var cost = profile.Account_Price - userDiscount;
 
+
         return affiliateType switch
         {
             AffiliateEarthlink => await RefillEarthlinkAsync(subscriber, profileId: profile.Id, cost, saleType, cashId, userAppUserId, conStr),
             AffiliateSas => await RefillSasAsync(subscriber, profile, cost, saleType, cashId, userAppUserId, conStr),
+            AffiliateFtth => await RefillFtthAsync(subscriber, profile, cost, saleType, cashId, 0, userAppUserId, conStr),
             _ => _function.ErrorResponse("الصفحة الرئيسية غير معرفة")
         };
     }
@@ -924,6 +854,8 @@ public class SubscriberService : ISubscriberService
         };
 
         var result = await _function.EarthRefillUser(earthForm, affiliate.Id);
+        if (!result.error && !saleType)
+            await RecordNoCashRefillPaymentAsync(subscriber.Id, cost, profileId);
         return result ?? _function.ErrorResponse("حدث خطأ أثناء تفعيل المشترك");
     }
 
@@ -957,7 +889,110 @@ public class SubscriberService : ISubscriberService
         };
 
         var result = await _function.SASRefillUser(sasForm, affiliate.Id);
+        if (!result.error && !saleType)
+            await RecordNoCashRefillPaymentAsync(subscriber.Id, cost, profile.Id);
         return result ?? _function.ErrorResponse("حدث خطأ أثناء تفعيل المشترك");
+    }
+
+    private async Task<Response> RefillFtthAsync(
+     Subscriber subscriber,
+     Profile profile,
+     decimal cost,
+     bool saleType,
+     int cashId,
+     int agent,
+     int userAppUserId,
+     string conStr)
+    {
+        var affiliate = subscriber.FK_Subscribers_MainAffiliate;
+        var userData = await _function.FTTHGetUserDataByIndex(affiliate.Id, subscriber.UserIndex, 0);
+        if (userData != null && !userData.error)
+        {
+
+            SASAppUserResponse userInfo;
+            try
+            {
+                userInfo = JsonConvert.DeserializeObject<SASAppUserResponse>(userData.data?.ToString() ?? "")
+                    ?? new SASAppUserResponse();
+            }
+            catch
+            {
+                userInfo = new SASAppUserResponse();
+            }
+
+            DateTime expDate;
+            if (!DateTime.TryParse(userInfo.manualExpirationDate, out expDate)) expDate = DateTime.MinValue;
+            if (expDate > DateTime.Now)
+            {
+                var ftthSchForm = new DtoFTTHShechulledUser
+                {
+                    connectionString = conStr,
+                    userIndex = subscriber.UserIndex,
+                    agent = agent,
+                    userId = subscriber.Id,
+                    username = subscriber.Username,
+                    profileId = profile.AccIndex,
+                    emp = userAppUserId,
+                    details = "تم التفعيل من قبل المشترك",
+                    subAffiliate = subscriber.FK_Subscribers_SubAffiliate.Id,
+                    saleType = saleType,
+                    cost = cost,
+                    received = 0,
+                    cashAccount = cashId,
+                    saveInvoice = true
+                };
+                var resultExp = await _function.FTTHRefillSechedulledUser(ftthSchForm, affiliate.Id);
+                if (!resultExp.error && !saleType)
+                    await RecordNoCashRefillPaymentAsync(subscriber.Id, cost, profile.Id);
+                return resultExp ?? _function.ErrorResponse("حدث خطأ أثناء تفعيل المشترك");
+            }
+        }
+
+        var ftthForm = new DtoCheckFtthActivateUser
+        {
+            connectionString = conStr,
+            userIndex = subscriber.UserIndex,
+            agent = agent,
+            userId = subscriber.Id,
+            username = subscriber.Username,
+            profileId = profile.AccIndex,
+            emp = userAppUserId,
+            details = "تم التفعيل من قبل المشترك",
+            subAffiliate = subscriber.FK_Subscribers_SubAffiliate.Id,
+            saleType = saleType,
+            cost = cost,
+            received = 0,
+            cashAccount = cashId,
+            saveInvoice = true
+        };
+
+        var result = await _function.FTTHRefillUser(ftthForm, affiliate.Id);
+        if (!result.error && !saleType)
+            await RecordNoCashRefillPaymentAsync(subscriber.Id, cost, profile.Id);
+        return result ?? _function.ErrorResponse("حدث خطأ أثناء تفعيل المشترك");
+    }
+
+    private async Task RecordNoCashRefillPaymentAsync(int subscriberId, decimal cost, int profileId)
+    {
+        var payment = new Payment
+        {
+            SubscriberId = subscriberId,
+            RequestId = Guid.NewGuid().ToString(),
+            Amount = cost,
+            Currency = "IQD",
+            Status = PaymentStatus.Succeeded,
+            Type = PaymentType.OneTime,
+            Purpose = "RefillNoCash",
+            ProfileId = profileId,
+            SaleType = false,
+            RefillExecuted = true,
+            CreatedAt = DateTime.Now,
+            ModifiedAt = DateTime.Now,
+            IsReceivedFromUfeq = false,
+            Fee = _noCashRefillingFee
+        };
+        await _context.Payments.AddAsync(payment);
+        await _context.SaveChangesAsync();
     }
 
     private static DtoPaymentCustomerObj BuildPaymentCustomerInfo(Subscriber subscriber) =>
