@@ -29,7 +29,9 @@
 
       <div class="field">
         <label for="company">الشركة التابعة</label>
-        <div class="company-grid" role="listbox" aria-label="اختر الشركة">
+        <div v-if="companiesLoading" class="companies-status">جاري تحميل الشركات...</div>
+        <div v-else-if="companiesError" class="alert alert-error">{{ companiesError }}</div>
+        <div v-else class="company-grid" role="listbox" aria-label="اختر الشركة">
           <button
             v-for="c in companies"
             :key="c.id"
@@ -40,8 +42,17 @@
             :aria-selected="form.company === c.id"
             @click="form.company = c.id"
           >
-            <strong>{{ c.label }}</strong>
-            <small>{{ c.hint }}</small>
+            <img
+              class="company-logo"
+              :src="c.logoUrl"
+              :alt="c.label"
+              loading="lazy"
+              @error="onLogoError"
+            />
+            <div class="company-copy">
+              <strong>{{ c.label }}</strong>
+              <small>{{ c.hint }}</small>
+            </div>
           </button>
         </div>
       </div>
@@ -78,25 +89,19 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
+import { getCompanies } from '../api/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
 const toast = useToastStore()
 
-const companies = [
-  { id: 'WAEL', label: 'WAEL', hint: 'واصل' },
-  { id: 'Wi-Fi', label: 'Wi-Fi', hint: 'واي فاي' },
-  { id: 'Connect', label: 'Connect', hint: 'كونكت' },
-  { id: 'KGD', label: 'KGD', hint: 'كي جي دي' },
-  { id: 'SASNET', label: 'SASNET', hint: 'ساس نت' },
-  { id: 'NetSpeed', label: 'NetSpeed', hint: 'نت سبيد' },
-  { id: 'Online', label: 'Online', hint: 'أونلاين' },
-  { id: 'Arjwan', label: 'Arjwan', hint: 'أرجوان' },
-]
+const companies = ref([])
+const companiesLoading = ref(true)
+const companiesError = ref('')
 
 const icons = {
   phone: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none"><path d="M8.4 4.8h2.2l1.1 3.3-1.4 1.4a12.4 12.4 0 0 0 4.6 4.6l1.4-1.4 3.3 1.1v2.2A2.2 2.2 0 0 1 17.4 18 13.4 13.4 0 0 1 4 4.6 2.2 2.2 0 0 1 6.2 2.4H8.4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`,
@@ -104,8 +109,43 @@ const icons = {
 
 const form = reactive({
   mobile: '',
-  company: 'WAEL',
+  company: '',
 })
+
+function onLogoError(event) {
+  const img = event?.target
+  if (!img || img.dataset.fallback === '1') return
+  img.dataset.fallback = '1'
+  img.src = '/logo.png'
+}
+
+async function loadCompanies() {
+  companiesLoading.value = true
+  companiesError.value = ''
+  try {
+    const { data } = await getCompanies()
+    const list = Array.isArray(data) ? data : []
+    companies.value = list.map((c) => ({
+      id: c.id || c.Id || '',
+      label: c.label || c.Label || '',
+      hint: c.hint || c.Hint || '',
+      logoUrl: c.logoUrl || c.LogoUrl || '/logo.png',
+    })).filter((c) => c.id)
+
+    const preferred =
+      companies.value.find((c) => c.id.toUpperCase() === 'WAEL') ||
+      companies.value[0]
+    form.company = preferred?.id || ''
+  } catch (err) {
+    companiesError.value =
+      err.response?.data?.error ||
+      err.response?.data?.message ||
+      'تعذر تحميل قائمة الشركات'
+    companies.value = []
+  } finally {
+    companiesLoading.value = false
+  }
+}
 
 async function onSubmit() {
   if (!form.company) {
@@ -123,6 +163,8 @@ async function onSubmit() {
     toast.error(auth.error, 'فشل الدخول')
   }
 }
+
+onMounted(loadCompanies)
 </script>
 
 <style scoped>
@@ -273,10 +315,16 @@ async function onSubmit() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 2px;
-  max-height: 168px;
+  max-height: 220px;
   overflow: auto;
   padding: 2px;
   -webkit-overflow-scrolling: touch;
+}
+
+.companies-status {
+  margin-top: 8px;
+  color: var(--ink-muted);
+  font-size: 0.86rem;
 }
 
 .company-tile {
@@ -287,8 +335,24 @@ async function onSubmit() {
   text-align: start;
   cursor: pointer;
   display: grid;
-  gap: 2px;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  align-items: center;
   transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.company-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: rgba(0, 174, 239, 0.06);
+}
+
+.company-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
 .company-tile strong {

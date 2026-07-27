@@ -16,4 +16,15 @@ public class TenantCompanyOptions
     public List<string> Aliases { get; set; } = [];
 
     public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>Name shown on the login company tile.</summary>
+    public string DisplayName { get; set; } = "";
+
+    /// <summary>Short Arabic (or secondary) hint under the display name.</summary>
+    public string Hint { get; set; } = "";
+
+    /// <summary>Public logo path, e.g. /logos/wael.png</summary>
+    public string LogoUrl { get; set; } = "";
+
+    public int SortOrder { get; set; }
 }
