@@ -453,7 +453,7 @@ public class SubscriberService : ISubscriberService
         {
             token = _qiToken,
             amount = amount,
-            AppId = "IBS-MOBILE",
+            AppId = $"IBS_MOBILE: {_tenant.CompanyKey ?? "0"}",
             currency = "IQD",
             customerInfo = BuildPaymentCustomerInfo(subscriber),
             requestId = requestId,
