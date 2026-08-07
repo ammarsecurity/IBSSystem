@@ -119,12 +119,12 @@ namespace IBS.Data
 
     public class DtoPymentResponseDetails
     {
-        public string resultCode { get; set; }
-        public string rrn { get; set; }
-        public string authId { get; set; }
-        public DateTime authDate { get; set; }
-        public string maskedPan { get; set; }
-        public string paymentSystem { get; set; }
+        public string? resultCode { get; set; }
+        public string? rrn { get; set; }
+        public string? authId { get; set; }
+        public DateTime? authDate { get; set; }
+        public string? maskedPan { get; set; }
+        public string? paymentSystem { get; set; }
         public object? customDetails { get; set; }
     }
 

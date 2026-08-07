@@ -193,6 +193,8 @@ public class SubscriberService : ISubscriberService
         {
             userInfo = JsonConvert.DeserializeObject<SASAppUserResponse>(userData.data?.ToString() ?? "")
                 ?? new SASAppUserResponse();
+            if (userInfo.displayName != subscriber.NameStr)
+                userInfo.displayName = subscriber.NameStr;
         }
         catch
         {
@@ -239,6 +241,12 @@ public class SubscriberService : ISubscriberService
             .Where(c => c.SubAffiliateId == subscriber.SubAffiliateId && profileIds.Contains(c.ProfileId))
             .ToDictionaryAsync(c => c.ProfileId, c => c.SaleCost);
 
+        var discount = await _context.SubscriberDiscounts
+            .AsNoTracking()
+            .Where(x => x.SubscId == subscriber.SubAffiliateId)
+            .Select(u => u.Amount)
+            .FirstOrDefaultAsync();
+
         return profiles.Select(p =>
         {
             decimal price = p.Account_Price;
@@ -254,7 +262,7 @@ public class SubscriberService : ISubscriberService
                 Name = p.Account_Name,
                 Description = p.Account_Description,
                 BuyCost = p.Account_BuyCost,
-                Price = price,
+                Price = price - discount,
             };
         }).ToList();
     }
@@ -441,7 +449,7 @@ public class SubscriberService : ISubscriberService
             SaleType = saleType,
             RefillExecuted = false,
             IsReceivedFromUfeq = false,
-            Fee = fee,
+            Fee = saleType == true ? fee : 0,
             CreatedAt = DateTime.Now
         };
 
